@@ -32,11 +32,13 @@ def limpiar_csv(username):
     input_file = f"data/{username}_raw.csv"
     output_file = f"data/{username}_clean.csv"
     año_actual = datetime.now().year
-    with open(input_file, newline='', encoding="utf-8") as infile, open(output_file, "w", newline='', encoding="utf-8") as outfile:
+    file_exists = os.path.isfile(output_file)
+    with open(input_file, newline='', encoding="utf-8") as infile, open(output_file, "a", newline='', encoding="utf-8") as outfile:
         reader = csv.DictReader(infile)
         fieldnames = reader.fieldnames
         writer = csv.DictWriter(outfile, fieldnames=fieldnames)
-        writer.writeheader()
+        if not file_exists:
+            writer.writeheader()
         for row in reader:
             # Limpiar fecha_publicacion
             row["fecha_publicacion"] = parse_fecha_publicacion(row["fecha_publicacion"], año_actual)

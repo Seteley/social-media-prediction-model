@@ -60,10 +60,12 @@ def scrape_profile(username: str):
         })
 
     # Guardar en CSV
-    with open(csv_file, "w", newline='', encoding="utf-8") as csvfile:
-        fieldnames = ["timestamp", "usuario", "fecha_publicacion", "contenido", "respuestas", "retweets", "likes", "guardados", "vistas"]
+    fieldnames = ["timestamp", "usuario", "fecha_publicacion", "contenido", "respuestas", "retweets", "likes", "guardados", "vistas"]
+    file_exists = os.path.isfile(csv_file)
+    with open(csv_file, "a", newline='', encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+        if not file_exists:
+            writer.writeheader()
         for t in tweets:
             writer.writerow(t)
     print(f"Datos guardados en {csv_file}")
