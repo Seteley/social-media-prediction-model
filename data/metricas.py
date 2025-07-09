@@ -1,5 +1,5 @@
 from unofficial_livecounts_api.twitter import TwitterAgent
-from datetime import datetime
+from datetime import datetime, timezone
 import csv
 import os
 
@@ -13,7 +13,7 @@ def guardar_metricas_usuario(nombre_usuario):
             writer = csv.writer(f)
             writer.writerow(["Hora", "Usuario", "Seguidores", "Tweets", "Following"])
 
-    hora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    hora = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     metricas = TwitterAgent.fetch_user_metrics(query=nombre_usuario)
     seguidores = metricas.follower_count
     tweets = metricas.tweet_count

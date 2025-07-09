@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 def scrape_profile(username: str):
@@ -21,7 +21,7 @@ def scrape_profile(username: str):
 
     # Procesar el HTML y extraer los tweets
     soup = BeautifulSoup(html, "html.parser")
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
     tweets = []
     tweet_cards = soup.find_all("div", class_="text-card-foreground")

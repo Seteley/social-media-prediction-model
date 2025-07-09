@@ -1,6 +1,6 @@
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import re
 
 def parse_num(valor):
@@ -16,22 +16,42 @@ def parse_num(valor):
 
 def parse_fecha_publicacion(fecha_pub, año_actual):
     fecha_pub = fecha_pub.strip()
+    # Si es formato relativo tipo '6 h', '7 h', etc.
+    match = re.match(r"(\d+) h", fecha_pub)
+    if match:
+        horas = int(match.group(1))
+        dt = datetime.now(timezone.utc) - timedelta(hours=horas)
+        return dt.strftime("%Y-%m-%d")
     # Si ya tiene año, lo intentamos parsear
-    formatos = ["%b %d, %Y", "%b %d"]
-    for fmt in formatos:
-        try:
-            dt = datetime.strptime(fecha_pub, fmt)
-            if fmt == "%b %d":
-                dt = dt.replace(year=año_actual)
-            return dt.strftime("%Y-%m-%d")
-        except Exception:
-            continue
+    try:
+        dt = datetime.strptime(fecha_pub, "%b %d, %Y")
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # Si es solo mes y día, parsear manualmente para evitar warning
+    try:
+        meses = {
+            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+        }
+        partes = fecha_pub.split()
+        if len(partes) == 2 and partes[0] in meses:
+            mes = meses[partes[0]]
+            dia = int(partes[1])
+            hoy = datetime.now(timezone.utc).date()
+            fecha_candidata = datetime(hoy.year, mes, dia).date()
+            # Si la fecha es futura respecto a hoy, es del año pasado
+            if fecha_candidata > hoy:
+                fecha_candidata = datetime(hoy.year - 1, mes, dia).date()
+            return fecha_candidata.strftime("%Y-%m-%d")
+    except Exception:
+        pass
     return fecha_pub  # Si no se puede parsear, dejar igual
 
 def limpiar_csv(username):
     input_file = f"data/{username}_raw.csv"
     output_file = f"data/{username}_clean.csv"
-    año_actual = datetime.now().year
+    año_actual = datetime.now(timezone.utc).year
     file_exists = os.path.isfile(output_file)
     with open(input_file, newline='', encoding="utf-8") as infile, open(output_file, "a", newline='', encoding="utf-8") as outfile:
         reader = csv.DictReader(infile)
@@ -47,6 +67,9 @@ def limpiar_csv(username):
             # Convertir a int los campos numéricos
             for campo in ["respuestas", "retweets", "likes", "guardados", "vistas"]:
                 row[campo] = parse_num(row[campo])
+            # No agregar si algún campo está vacío
+            if any(str(row[campo]).strip() == '' for campo in fieldnames):
+                continue
             writer.writerow(row)
     print(f"Archivo limpio guardado en {output_file}")
 
