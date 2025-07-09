@@ -74,4 +74,9 @@ def limpiar_csv(username):
     print(f"Archivo limpio guardado en {output_file}")
 
 if __name__ == "__main__":
-    limpiar_csv("interbank")
+    import sys
+    if len(sys.argv) > 1:
+        username = sys.argv[1]
+    else:
+        username = "interbank"
+    limpiar_csv(username)

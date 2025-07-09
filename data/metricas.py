@@ -26,4 +26,9 @@ def guardar_metricas_usuario(nombre_usuario):
     print(f"[{hora}] @{nombre_usuario} | Seguidores: {seguidores} | Tweets: {tweets} | Following: {following}")
 
 if __name__ == "__main__":
-    guardar_metricas_usuario("interbank")
+    import sys
+    if len(sys.argv) > 1:
+        username = sys.argv[1]
+    else:
+        username = "interbank"
+    guardar_metricas_usuario(username)

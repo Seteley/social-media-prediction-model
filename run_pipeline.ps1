@@ -7,14 +7,25 @@
 # pip install unofficial-livecounts-api
 # playwright install chromium
 
-# 2. Ejecutar el scraper
-python scraper/scrape_interbank.py
 
-# 3. Limpiar los datos
-python data/limpiar.py
+# Lista de usuarios a procesar
+$usuarios = @(
+    'Interbank',
+    'BanBif',
+    'BancodelaNacion',
+    'bcrpoficial',
+    'BancoPichincha',
+    'bbva_peru',
+    'BCPComunica',
+    'ScotiabankPE'
+)
 
-# 4. Ejecutar métricas
-python data/metricas.py
+foreach ($username in $usuarios) {
+    Write-Host "\nProcesando usuario: $username" -ForegroundColor Cyan
+    python scraper/scrape_interbank.py $username
+    python data/limpiar.py $username
+    python data/metricas.py $username
+}
 
 # 5. Commit y push de resultados (opcional, requiere git configurado y permisos)
 # git config --global user.name "github-actions[bot]"

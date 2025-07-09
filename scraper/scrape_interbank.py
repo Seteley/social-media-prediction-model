@@ -71,4 +71,9 @@ def scrape_profile(username: str):
     print(f"Datos guardados en {csv_file}")
 
 if __name__ == "__main__":
-    scrape_profile("interbank")
+    import sys
+    if len(sys.argv) > 1:
+        username = sys.argv[1]
+    else:
+        username = "interbank"
+    scrape_profile(username)
