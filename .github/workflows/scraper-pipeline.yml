@@ -32,3 +32,11 @@ jobs:
 
       - name: Run metrics
         run: python data/metricas.py
+
+      - name: Commit and push results
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/*.csv scraper/*.txt scraper/*.csv
+          git commit -m "[auto] Actualización de datos por GitHub Actions" || echo "No hay cambios para commitear"
+          git push
