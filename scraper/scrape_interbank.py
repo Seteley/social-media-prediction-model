@@ -7,7 +7,7 @@ import os
 def scrape_profile(username: str):
     url = f"https://www.twitterviewer.io/profile/{username}"
     output_file = f"scraper/{username}_raw.txt"
-    csv_file = f"scraper/{username}.csv"
+    csv_file = f"data/{username}_raw.csv"
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
