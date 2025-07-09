@@ -22,8 +22,7 @@ def scrape_profile(username: str):
     # Procesar el HTML y extraer los tweets
     soup = BeautifulSoup(html, "html.parser")
     now = datetime.now()
-    fecha = now.strftime("%Y-%m-%d")
-    hora = now.strftime("%H:%M:%S")
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
     tweets = []
     tweet_cards = soup.find_all("div", class_="text-card-foreground")
     for card in tweet_cards:
@@ -48,22 +47,21 @@ def scrape_profile(username: str):
             likes = nums[2].text.strip()
             guardados = nums[3].text.strip()
             vistas = nums[4].text.strip()
-        tweets.append({
-            "fecha": fecha,
-            "hora": hora,
-            "usuario": username,
-            "fecha_publicacion": fecha_pub,
-            "contenido": contenido,
-            "respuestas": respuestas,
-            "retweets": retweets,
-            "likes": likes,
-            "guardados": guardados,
-            "vistas": vistas
-        })
+    tweets.append({
+        "timestamp": timestamp,
+        "usuario": username,
+        "fecha_publicacion": fecha_pub,
+        "contenido": contenido,
+        "respuestas": respuestas,
+        "retweets": retweets,
+        "likes": likes,
+        "guardados": guardados,
+        "vistas": vistas
+    })
 
     # Guardar en CSV
     with open(csv_file, "w", newline='', encoding="utf-8") as csvfile:
-        fieldnames = ["fecha", "hora", "usuario", "fecha_publicacion", "contenido", "respuestas", "retweets", "likes", "guardados", "vistas"]
+        fieldnames = ["timestamp", "usuario", "fecha_publicacion", "contenido", "respuestas", "retweets", "likes", "guardados", "vistas"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for t in tweets:
