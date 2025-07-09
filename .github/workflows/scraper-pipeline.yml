@@ -1,9 +1,10 @@
 name: Social Media Scraper Pipeline
 
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 12 * * *'  # Corre todos los días a las 12:00 UTC
+    - cron: '0 * * * *'  # Corre cada hora a la hora en punto (UTC)
 
 jobs:
   run-pipeline:
@@ -24,14 +25,16 @@ jobs:
           pip install unofficial-livecounts-api
           playwright install chromium
 
-      - name: Run scraper
-        run: python scraper/scrape_interbank.py
 
-      - name: Clean data
-        run: python data/limpiar.py
-
-      - name: Run metrics
-        run: python data/metricas.py
+      - name: Run pipeline for all users
+        run: |
+          users=(Interbank BanBif BancodelaNacion bcrpoficial BancoPichincha bbva_peru BCPComunica ScotiabankPE)
+          for user in "${users[@]}"; do
+            echo "Procesando usuario: $user"
+            python scraper/scrape_interbank.py $user
+            python data/limpiar.py $user
+            python data/metricas.py $user
+          done
 
       - name: Commit and push results
         run: |
