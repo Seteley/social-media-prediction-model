@@ -47,17 +47,17 @@ def scrape_profile(username: str):
             likes = nums[2].text.strip()
             guardados = nums[3].text.strip()
             vistas = nums[4].text.strip()
-    tweets.append({
-        "timestamp": timestamp,
-        "usuario": username,
-        "fecha_publicacion": fecha_pub,
-        "contenido": contenido,
-        "respuestas": respuestas,
-        "retweets": retweets,
-        "likes": likes,
-        "guardados": guardados,
-        "vistas": vistas
-    })
+        tweets.append({
+            "timestamp": timestamp,
+            "usuario": username,
+            "fecha_publicacion": fecha_pub,
+            "contenido": contenido,
+            "respuestas": respuestas,
+            "retweets": retweets,
+            "likes": likes,
+            "guardados": guardados,
+            "vistas": vistas
+        })
 
     # Guardar en CSV
     with open(csv_file, "w", newline='', encoding="utf-8") as csvfile:
