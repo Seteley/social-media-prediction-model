@@ -55,11 +55,24 @@ for file in glob.glob("data/*_metricas.csv"):
     except Exception as e:
         print(f"Error leyendo {file}: {e}")
         continue
+
+    # Renombrar columnas para que coincidan con la base de datos
+    rename_dict = {
+        'Hora': 'hora',
+        'Seguidores': 'seguidores',
+        'Tweets': 'tweets',
+        'Following': 'siguiendo',
+        'Usuario': 'usuario_csv'  # solo para no perder la columna, no se usa
+    }
+    df = df.rename(columns=rename_dict)
     df['id_usuario'] = usuario_map[username]
     cols = ['id_usuario', 'hora', 'seguidores', 'tweets', 'siguiendo']
     try:
-        df = df[cols]
-        con.execute("INSERT INTO metrica (id_usuario, hora, seguidores, tweets, siguiendo) VALUES (?, ?, ?, ?, ?)", df.values.tolist())
+        df = df.loc[:, cols].reset_index(drop=True)
+        if list(df.columns) != cols:
+            print(f"Columnas finales inesperadas en {file}: {df.columns.tolist()}")
+        # Insertar sin id_metrica, que ahora es autoincremental
+        con.executemany("INSERT INTO metrica (id_usuario, hora, seguidores, tweets, siguiendo) VALUES (?, ?, ?, ?, ?)", df.values.tolist())
         print(f"Subido: {file}")
     except Exception as e:
         print(f"Error subiendo {file}: {e}")

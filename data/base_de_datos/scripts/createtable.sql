@@ -41,9 +41,11 @@ CREATE TABLE IF NOT EXISTS publicaciones (
     FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)
 );
 
--- Métricas por hora
+
+-- Usando SEQUENCE para id_metrica
+CREATE SEQUENCE IF NOT EXISTS metrica_seq START 1;
 CREATE TABLE IF NOT EXISTS metrica (
-    id_metrica INTEGER PRIMARY KEY,
+    id_metrica INTEGER DEFAULT nextval('metrica_seq') PRIMARY KEY,
     id_usuario INTEGER NOT NULL,
     hora TIMESTAMP NOT NULL,
     seguidores INTEGER,
