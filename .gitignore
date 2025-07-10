@@ -1,0 +1,58 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Data and database files
+*.db
+*.duckdb
+*.sqlite
+*.sqlite3
+*.log
+*.bak
+*.tmp
+
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+
+# Python environment files
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Ignore results and outputs
+dist/
+build/
+*.out
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Ignore user scripts and secrets
+*.env
+.env.*
+secrets.*
+
+# Ignore structure and temporary files
+estructura_carpetas.txt
+
+# Ignore notebook outputs
+*.nbconvert.ipynb
+
+# Ignore test and temp folders
+tmp/
+temp/
