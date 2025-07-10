@@ -83,5 +83,5 @@ def run_kmeans_clustering(username, n_clusters=5):
 
 if __name__ == "__main__":
     # Cambia el username por el que quieras analizar
-    username = 'Interbank'  # Ejemplo
-    run_kmeans_clustering(username, 4)  # Cambia n_clusters si es necesario
+    username = 'BanBif'  # Ejemplo
+    run_kmeans_clustering(username, 5)  # Cambia n_clusters si es necesario
