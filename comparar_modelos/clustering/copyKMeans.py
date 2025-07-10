@@ -7,7 +7,9 @@ from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def run_kmeans_clustering(csv_path, n_clusters=5):
+def run_kmeans_clustering(username, n_clusters=5):
+    # Construir el path del archivo CSV a partir del username
+    csv_path = f'data/{username}_clean.csv'
     # Cargar datos
     df = pd.read_csv(csv_path)
     # Filtrar para quedarnos solo con la última medición de cada tweet (por fecha_publicacion + contenido)
@@ -29,7 +31,7 @@ def run_kmeans_clustering(csv_path, n_clusters=5):
     plt.plot(K, inercia, marker='o')
     plt.xlabel('Número de Clusters')
     plt.ylabel('Inercia')
-    plt.title('Método del Codo')
+    plt.title(f'Método del Codo para {username}')
     plt.show()
     # KMeans con el número de clusters elegido (por defecto n_clusters)
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
@@ -49,7 +51,7 @@ def run_kmeans_clustering(csv_path, n_clusters=5):
     X_pca = pca.fit_transform(X_scaled)
     plt.figure(figsize=(7,5))
     sns.scatterplot(x=X_pca[:,0], y=X_pca[:,1], hue=labels, palette='Set2')
-    plt.title(f'KMeans Clusters (k={n_clusters})')
+    plt.title(f'KMeans Clusters (k={n_clusters}) para {username}')
     plt.show()
     # Promedios por cluster
     num_cols = df.select_dtypes(include='number').columns
@@ -68,7 +70,6 @@ def run_kmeans_clustering(csv_path, n_clusters=5):
     return df
 
 if __name__ == "__main__":
-    # Cambia el path al archivo CSV limpio que quieras analizar
-    csv_path = 'data/interbank_clean.csv'  # Ejemplo
-    # csv_path = '../../data/elonmusk_clean.csv'  # Ejemplo
-    run_kmeans_clustering(csv_path, 2)  # Cambia n_clusters si es necesario
+    # Cambia el username por el que quieras analizar
+    username = 'BanBif'  # Ejemplo
+    run_kmeans_clustering(username, 7)  # Cambia n_clusters si es necesario
