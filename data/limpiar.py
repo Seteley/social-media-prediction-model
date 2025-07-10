@@ -16,7 +16,12 @@ def parse_num(valor):
 
 def parse_fecha_publicacion(fecha_pub, año_actual):
     fecha_pub = fecha_pub.strip()
-    # Si es formato relativo tipo '6 h', '7 h', etc.
+    # Si es 'now', 'x m' (minutos), o formato relativo tipo '6 h', '7 h', etc.
+    if fecha_pub.lower() == 'now':
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    match_min = re.match(r"(\d+) m", fecha_pub)
+    if match_min:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
     match = re.match(r"(\d+) h", fecha_pub)
     if match:
         horas = int(match.group(1))
@@ -60,8 +65,16 @@ def limpiar_csv(username):
         if not file_exists:
             writer.writeheader()
         for row in reader:
-            # Limpiar fecha_publicacion
-            row["fecha_publicacion"] = parse_fecha_publicacion(row["fecha_publicacion"], año_actual)
+            # Obtener la fecha de captura (primera columna)
+            fecha_captura = row[fieldnames[0]] if fieldnames else None
+            # Limpiar fecha_publicacion, usando fecha_captura si es relativa
+            fecha_pub_original = row["fecha_publicacion"]
+            fecha_pub_limpia = parse_fecha_publicacion(fecha_pub_original, año_actual)
+            # Si la fecha original es 'now', 'x m', 'x h', etc., usar fecha_captura
+            if fecha_pub_original.lower() == 'now' or re.match(r"(\d+) m", fecha_pub_original) or re.match(r"(\d+) h", fecha_pub_original):
+                row["fecha_publicacion"] = fecha_captura
+            else:
+                row["fecha_publicacion"] = fecha_pub_limpia
             # Limpiar contenido
             row["contenido"] = re.sub(r"\s+", " ", row["contenido"]).strip()
             # Convertir a int los campos numéricos

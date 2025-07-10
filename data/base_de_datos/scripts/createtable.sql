@@ -25,9 +25,11 @@ CREATE TABLE IF NOT EXISTS usuario (
     FOREIGN KEY (id_empresa) REFERENCES empresa(id_empresa)
 );
 
--- Publicaciones
+
+-- Usando SEQUENCE para id_publicacion
+CREATE SEQUENCE IF NOT EXISTS publicaciones_seq START 1;
 CREATE TABLE IF NOT EXISTS publicaciones (
-    id_publicacion SERIAL PRIMARY KEY
+    id_publicacion INTEGER DEFAULT nextval('publicaciones_seq') PRIMARY KEY,
     id_usuario INTEGER NOT NULL,
     fecha_publicacion TIMESTAMP NOT NULL,
     contenido TEXT,
