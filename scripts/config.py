@@ -78,15 +78,33 @@ def setup_global_config():
 # Configuración automática al importar el módulo
 CONFIG_INFO = setup_global_config()
 
+# Lista de cuentas de bancos disponibles
+CUENTAS_DISPONIBLES = [
+    'Interbank',
+    'BanBif', 
+    'BancodelaNacion',
+    'bcrpoficial',
+    'BancoPichincha',
+    'bbva_peru',
+    'BCPComunica',
+    'ScotiabankPE'
+]
+
 # Variables de configuración del proyecto
 PROJECT_CONFIG = {
     'data_folder': 'data',
-    'file_pattern': '*_clean.csv',
+    'file_patterns': {
+        'clean': '*_clean.csv',
+        'metricas': '*_metricas.csv'
+    },
+    'cuentas_disponibles': CUENTAS_DISPONIBLES,
     'default_target_variable': 'likes',
     'features_base': ['respuestas', 'retweets', 'likes', 'guardados', 'vistas'],
     'test_size': 0.2,
     'random_state': 42,
-    'cv_folds': 5
+    'cv_folds': 5,
+    'analisis_modes': ['individual', 'comparativo', 'consolidado'],
+    'default_mode': 'consolidado'
 }
 
 # Configuración de modelos

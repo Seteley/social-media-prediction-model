@@ -13,438 +13,441 @@ from datetime import datetime
 from typing import Dict, Tuple, List, Optional, Any
 
 # Importar módulos del proyecto
-from config import PROJECT_CONFIG, CONFIG_INFO
-from data_loader import load_and_prepare_data
-from preprocessing import preprocess_twitter_data
+from config import PROJECT_CONFIG, CONFIG_INFO, CUENTAS_DISPONIBLES
+from data_loader import MultiAccountDataLoader, load_and_prepare_data
+from preprocessing import MultiAccountDataPreprocessor, preprocess_twitter_data
 from clustering import perform_clustering_analysis
 from regression_models import train_regression_models
 from visualization import create_comprehensive_visualizations
 
 class TwitterAnalysisPipeline:
     """
-    Pipeline principal para análisis completo de datos de Twitter.
+    Pipeline principal para análisis completo de datos de Twitter multi-cuenta.
     """
     
-    def __init__(self, usuario_objetivo: str = 'interbank', 
-                 target_variable: str = 'likes'):
+    def __init__(self, target_accounts: List[str] = None, 
+                 target_variable: str = 'likes',
+                 analysis_mode: str = 'consolidado'):
         """
         Inicializa el pipeline.
         
         Args:
-            usuario_objetivo (str): Usuario específico o 'todos'
+            target_accounts (List[str]): Lista de cuentas objetivo o None para todas
             target_variable (str): Variable objetivo para regresión
+            analysis_mode (str): Modo de análisis ('individual', 'comparativo', 'consolidado')
         """
-        self.usuario_objetivo = usuario_objetivo
+        self.target_accounts = target_accounts or CUENTAS_DISPONIBLES
         self.target_variable = target_variable
+        self.analysis_mode = analysis_mode
         self.results = {}
         self.timestamp = datetime.now()
         
-        print("🚀 INICIANDO PIPELINE DE ANÁLISIS DE TWITTER")
-        print("="*60)
-        print(f"   • Usuario objetivo: {usuario_objetivo}")
+        print("🚀 PIPELINE DE ANÁLISIS DE TWITTER MULTI-CUENTA")
+        print("="*70)
+        print(f"   • Cuentas objetivo: {self.target_accounts}")
         print(f"   • Variable objetivo: {target_variable}")
+        print(f"   • Modo de análisis: {analysis_mode}")
         print(f"   • Timestamp: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
         
     def run_complete_analysis(self) -> Dict[str, Any]:
         """
-        Ejecuta el pipeline completo de análisis.
+        Ejecuta el pipeline completo de análisis multi-cuenta.
         
         Returns:
             Dict[str, Any]: Diccionario con todos los resultados
         """
-        print("\n🔄 EJECUTANDO PIPELINE COMPLETO...")
+        print("\n🔄 EJECUTANDO PIPELINE COMPLETO MULTI-CUENTA...")
         
         try:
-            # 1. Carga de datos
-            self._step_1_load_data()
+            # 1. Carga de datos multi-cuenta
+            self._step_1_load_multi_account_data()
             
-            # 2. Preprocesamiento
-            self._step_2_preprocessing()
+            # 2. Preprocesamiento multi-cuenta
+            self._step_2_preprocessing_multi_account()
             
-            # 3. Análisis de clustering
-            self._step_3_clustering()
+            # 3. Análisis según el modo seleccionado
+            if self.analysis_mode == 'individual':
+                self._step_3_individual_analysis()
+            elif self.analysis_mode == 'comparativo':
+                self._step_3_comparative_analysis()
+            else:  # consolidado
+                self._step_3_consolidated_analysis()
             
-            # 4. Modelos de regresión
-            self._step_4_regression()
+            # 4. Resumen final
+            self._step_4_final_summary()
             
-            # 5. Visualizaciones
-            self._step_5_visualizations()
-            
-            # 6. Resumen final
-            self._step_6_final_summary()
-            
-            print("\n🎉 PIPELINE COMPLETADO EXITOSAMENTE")
+            print("\n🎉 PIPELINE MULTI-CUENTA COMPLETADO EXITOSAMENTE")
             return self.results
             
         except Exception as e:
             print(f"\n❌ ERROR EN EL PIPELINE: {str(e)}")
             raise e
     
-    def _step_1_load_data(self) -> None:
+    
+    def _step_1_load_multi_account_data(self) -> None:
         """
-        Paso 1: Carga y preparación de datos.
+        Paso 1: Carga y preparación de datos multi-cuenta.
         """
-        print("\n" + "="*60)
-        print("📂 PASO 1: CARGA DE DATOS")
-        print("="*60)
+        print("\n" + "="*70)
+        print("📂 PASO 1: CARGA DE DATOS MULTI-CUENTA")
+        print("="*70)
         
-        data, data_info = load_and_prepare_data(
-            usuario_objetivo=self.usuario_objetivo
+        # Inicializar loader
+        loader = MultiAccountDataLoader()
+        
+        # Cargar datos consolidados
+        consolidated_data = loader.load_consolidated_data(
+            target_accounts=self.target_accounts,
+            mode=self.analysis_mode
         )
         
-        self.results['data_raw'] = data
-        self.results['data_info'] = data_info
+        if not consolidated_data:
+            raise ValueError("No se pudieron cargar datos para las cuentas especificadas")
         
-        print(f"✅ Datos cargados: {data.shape}")
+        self.results['consolidated_data'] = consolidated_data
+        self.results['loader_info'] = {
+            'target_accounts': self.target_accounts,
+            'analysis_mode': self.analysis_mode,
+            'data_types': list(consolidated_data.keys())
+        }
         
-    def _step_2_preprocessing(self) -> None:
+        # Mostrar información de carga
+        for data_type, df in consolidated_data.items():
+            print(f"✅ {data_type}: {df.shape}")
+        
+    def _step_2_preprocessing_multi_account(self) -> None:
         """
-        Paso 2: Preprocesamiento y feature engineering.
+        Paso 2: Preprocesamiento multi-cuenta.
         """
-        print("\n" + "="*60)
-        print("🔧 PASO 2: PREPROCESAMIENTO")
-        print("="*60)
+        print("\n" + "="*70)
+        print("🔧 PASO 2: PREPROCESAMIENTO MULTI-CUENTA")
+        print("="*70)
         
-        X_scaled, data_enhanced, features, preprocess_info = preprocess_twitter_data(
-            self.results['data_raw']
+        # Inicializar preprocessor
+        preprocessor = MultiAccountDataPreprocessor()
+        
+        # Preprocesar datos consolidados
+        preprocessing_results = preprocessor.preprocess_multi_account_data(
+            self.results['consolidated_data'],
+            target_accounts=self.target_accounts
         )
         
-        self.results['X_scaled'] = X_scaled
-        self.results['data_enhanced'] = data_enhanced
-        self.results['features'] = features
-        self.results['preprocess_info'] = preprocess_info
+        self.results['preprocessing_results'] = preprocessing_results
+        self.results['preprocessor'] = preprocessor
         
-        print(f"✅ Features preparadas: {len(features)}")
-        print(f"✅ Datos escalados: {X_scaled.shape}")
+        # Mostrar resultados
+        for data_type, result in preprocessing_results.items():
+            if 'error' not in result:
+                print(f"✅ {data_type}: {result['X_scaled'].shape}")
+            else:
+                print(f"❌ Error en {data_type}: {result['error']}")
         
-    def _step_3_clustering(self) -> None:
+    def _step_3_consolidated_analysis(self) -> None:
         """
-        Paso 3: Análisis de clustering.
+        Paso 3: Análisis consolidado (todas las cuentas juntas).
         """
-        print("\n" + "="*60)
-        print("🔵 PASO 3: ANÁLISIS DE CLUSTERING")
-        print("="*60)
+        print("\n" + "="*70)
+        print("🔵 PASO 3: ANÁLISIS CONSOLIDADO")
+        print("="*70)
         
+        # Usar datos 'clean' como primarios, 'metricas' como complementarios
+        primary_data_type = 'clean' if 'clean' in self.results['preprocessing_results'] else list(self.results['preprocessing_results'].keys())[0]
+        primary_result = self.results['preprocessing_results'][primary_data_type]
+        
+        if 'error' in primary_result:
+            print(f"❌ No se puede realizar análisis: {primary_result['error']}")
+            return
+        
+        # Clustering
         clustering_results, clustering_analysis, data_with_clusters = perform_clustering_analysis(
-            self.results['X_scaled'],
-            self.results['data_enhanced']
+            primary_result['X_scaled'],
+            primary_result['data_enhanced']
         )
         
-        self.results['clustering_results'] = clustering_results
-        self.results['clustering_analysis'] = clustering_analysis
-        self.results['data_with_clusters'] = data_with_clusters
-        
-        print(f"✅ Clustering completado")
-        print(f"   • K-Means: {clustering_results['kmeans']['n_clusters']} clusters")
-        print(f"   • DBSCAN: {clustering_results['dbscan']['n_clusters']} clusters")
-        
-    def _step_4_regression(self) -> None:
-        """
-        Paso 4: Modelos de regresión.
-        """
-        print("\n" + "="*60)
-        print("📈 PASO 4: MODELOS DE REGRESIÓN")
-        print("="*60)
-        
+        # Regresión
         regression_results, regression_recommendation = train_regression_models(
-            self.results['data_enhanced'],
-            self.results['features'],
+            primary_result['data_enhanced'],
+            primary_result['features'],
             target_variable=self.target_variable
         )
         
+        # Visualizaciones
+        if len(regression_results) > 0 and clustering_results:
+            figures = create_comprehensive_visualizations(
+                regression_results,
+                clustering_results,
+                regression_recommendation,
+                primary_result['data_enhanced'],
+                primary_result['features'],
+                self.target_variable
+            )
+            self.results['visualizations'] = figures
+        
+        # Guardar resultados
+        self.results['clustering_results'] = clustering_results
+        self.results['clustering_analysis'] = clustering_analysis
+        self.results['data_with_clusters'] = data_with_clusters
         self.results['regression_results'] = regression_results
         self.results['regression_recommendation'] = regression_recommendation
+        self.results['primary_data_type'] = primary_data_type
         
-        print(f"✅ Regresión completada")
+        print(f"✅ Análisis consolidado completado usando datos '{primary_data_type}'")
         if regression_recommendation:
             print(f"   • Mejor modelo: {regression_recommendation['modelo']}")
             print(f"   • R² Score: {regression_recommendation['metrics']['R²']:.3f}")
-        
-    def _step_5_visualizations(self) -> None:
+    
+    def _step_3_individual_analysis(self) -> None:
         """
-        Paso 5: Generación de visualizaciones.
+        Paso 3: Análisis individual por cuenta.
         """
-        print("\n" + "="*60)
-        print("🎨 PASO 5: VISUALIZACIONES")
-        print("="*60)
+        print("\n" + "="*70)
+        print("🔵 PASO 3: ANÁLISIS INDIVIDUAL POR CUENTA")
+        print("="*70)
         
-        # Solo generar visualizaciones si hay resultados válidos
-        if (len(self.results['regression_results']) > 0 and 
-            self.results['clustering_results']):
+        individual_results = {}
+        
+        for account in self.target_accounts:
+            print(f"\n📊 Analizando cuenta: {account}")
             
-            figures = create_comprehensive_visualizations(
-                self.results['regression_results'],
-                self.results['clustering_results'],
-                self.results['regression_recommendation'],
-                self.results['data_enhanced'],
-                self.results['features'],
-                self.target_variable
+            # Cargar datos individuales para esta cuenta
+            loader = MultiAccountDataLoader()
+            account_data = loader.load_individual_account_data(account)
+            
+            if not account_data:
+                print(f"   ⚠️ No hay datos para {account}")
+                continue
+            
+            # Preprocesar datos de la cuenta
+            preprocessor = MultiAccountDataPreprocessor()
+            account_preprocessing = preprocessor.preprocess_multi_account_data(
+                account_data, target_accounts=[account]
             )
             
-            self.results['visualizations'] = figures
-            print(f"✅ Visualizaciones generadas: {len(figures)}")
-        else:
-            print("⚠️ Omitiendo visualizaciones: datos insuficientes")
+            # Análisis para esta cuenta
+            primary_data_type = 'clean' if 'clean' in account_preprocessing else list(account_preprocessing.keys())[0]
+            primary_result = account_preprocessing[primary_data_type]
+            
+            if 'error' in primary_result:
+                print(f"   ❌ Error en {account}: {primary_result['error']}")
+                continue
+            
+            # Análisis de clustering y regresión para esta cuenta
+            try:
+                clustering_results, _, _ = perform_clustering_analysis(
+                    primary_result['X_scaled'],
+                    primary_result['data_enhanced']
+                )
+                
+                regression_results, regression_recommendation = train_regression_models(
+                    primary_result['data_enhanced'],
+                    primary_result['features'],
+                    target_variable=self.target_variable
+                )
+                
+                individual_results[account] = {
+                    'preprocessing': account_preprocessing,
+                    'clustering': clustering_results,
+                    'regression': regression_results,
+                    'recommendation': regression_recommendation
+                }
+                
+                print(f"   ✅ {account} analizado exitosamente")
+                
+            except Exception as e:
+                print(f"   ❌ Error analizando {account}: {str(e)}")
+        
+        self.results['individual_results'] = individual_results
+        print(f"\n✅ Análisis individual completado para {len(individual_results)} cuentas")
     
-    def _step_6_final_summary(self) -> None:
+    def _step_3_comparative_analysis(self) -> None:
         """
-        Paso 6: Resumen final y validación.
+        Paso 3: Análisis comparativo entre cuentas.
         """
-        print("\n" + "="*60)
-        print("📊 PASO 6: RESUMEN FINAL")
-        print("="*60)
+        print("\n" + "="*70)
+        print("🔵 PASO 3: ANÁLISIS COMPARATIVO")
+        print("="*70)
+        
+        # Primero realizar análisis individual
+        self._step_3_individual_analysis()
+        
+        # Luego análisis consolidado para comparación
+        self._step_3_consolidated_analysis()
+        
+        # Análisis comparativo específico
+        if 'individual_results' in self.results and self.results['individual_results']:
+            comparative_metrics = self._generate_comparative_metrics()
+            self.results['comparative_metrics'] = comparative_metrics
+            
+            print("✅ Análisis comparativo completado")
+        else:
+            print("⚠️ No hay suficientes datos individuales para comparación")
+            
+    def _generate_comparative_metrics(self) -> Dict:
+        """
+        Genera métricas comparativas entre cuentas.
+        """
+        comparative_data = {
+            'account_performance': {},
+            'model_performance': {},
+            'engagement_metrics': {}
+        }
+        
+        for account, results in self.results['individual_results'].items():
+            if 'recommendation' in results and results['recommendation']:
+                rec = results['recommendation']
+                comparative_data['account_performance'][account] = {
+                    'best_model': rec['modelo'],
+                    'r2_score': rec['metrics']['R²'],
+                    'rmse': rec['metrics']['RMSE'],
+                    'samples': results['preprocessing']['clean']['info']['n_samples'] if 'clean' in results['preprocessing'] else 0
+                }
+        
+        return comparative_data
+        
+    def _step_4_final_summary(self) -> None:
+        """
+        Paso 4: Resumen final y validación.
+        """
+        print("\n" + "="*70)
+        print("� PASO 4: RESUMEN FINAL")
+        print("="*70)
         
         summary = self._generate_final_summary()
         self.results['final_summary'] = summary
         
         self._print_final_summary(summary)
-        
-    def _generate_final_summary(self) -> Dict[str, Any]:
+    
+    def _generate_final_summary(self) -> Dict:
         """
-        Genera resumen final del análisis.
-        
-        Returns:
-            Dict[str, Any]: Resumen completo
+        Genera un resumen completo del análisis.
         """
         summary = {
-            'timestamp': self.timestamp,
-            'usuario_objetivo': self.usuario_objetivo,
-            'target_variable': self.target_variable,
-            'config_info': CONFIG_INFO
+            'pipeline_info': {
+                'target_accounts': self.target_accounts,
+                'analysis_mode': self.analysis_mode,
+                'target_variable': self.target_variable,
+                'timestamp': self.timestamp.isoformat(),
+                'duration': (datetime.now() - self.timestamp).total_seconds()
+            },
+            'data_summary': {},
+            'analysis_summary': {},
+            'recommendations': []
         }
         
-        # Información de datos
-        if 'data_info' in self.results:
+        # Resumen de datos
+        if 'consolidated_data' in self.results:
             summary['data_summary'] = {
-                'total_tweets': self.results['data_info']['total_tweets'],
-                'total_usuarios': self.results['data_info']['total_usuarios'],
-                'shape_final': self.results['data_info']['shape_filtrada']
+                'data_types_loaded': list(self.results['consolidated_data'].keys()),
+                'accounts_processed': self.target_accounts,
+                'total_records': sum(df.shape[0] for df in self.results['consolidated_data'].values())
             }
         
-        # Información de features
-        if 'preprocess_info' in self.results:
-            summary['features_summary'] = {
-                'total_features': self.results['preprocess_info']['n_features'],
-                'features_engineered': len(self.results['preprocess_info']['features_engineered']),
-                'features_originales': len(self.results['preprocess_info']['features_originales'])
-            }
-        
-        # Mejores resultados
-        if 'clustering_analysis' in self.results:
-            summary['best_clustering'] = {
-                'algoritmo': self.results['clustering_analysis']['mejor_algoritmo'],
-                'silhouette_score': self.results['clustering_analysis']['mejor_score']
+        # Resumen de análisis según el modo
+        if self.analysis_mode == 'individual' and 'individual_results' in self.results:
+            summary['analysis_summary']['individual'] = {
+                'accounts_analyzed': len(self.results['individual_results']),
+                'successful_analyses': len([r for r in self.results['individual_results'].values() 
+                                          if 'recommendation' in r and r['recommendation']])
             }
         
         if 'regression_recommendation' in self.results and self.results['regression_recommendation']:
-            summary['best_regression'] = {
-                'modelo': self.results['regression_recommendation']['modelo'],
-                'r2_score': self.results['regression_recommendation']['metrics']['R²'],
-                'rmse': self.results['regression_recommendation']['metrics']['RMSE']
-            }
-        
-        # Cumplimiento de objetivos
-        summary['objectives_met'] = self._check_objectives_compliance()
+            summary['analysis_summary']['best_model'] = self.results['regression_recommendation']
+            summary['recommendations'].append(
+                f"El mejor modelo es {self.results['regression_recommendation']['modelo']} "
+                f"con R² = {self.results['regression_recommendation']['metrics']['R²']:.3f}"
+            )
         
         return summary
     
-    def _check_objectives_compliance(self) -> Dict[str, bool]:
-        """
-        Verifica el cumplimiento de objetivos del proyecto.
-        
-        Returns:
-            Dict[str, bool]: Estado de cumplimiento
-        """
-        compliance = {
-            'modelos_implementados': False,
-            'clustering_completado': False,
-            'regresion_completada': False,
-            'metricas_evaluadas': False,
-            'justificacion_generada': False,
-            'visualizaciones_creadas': False
-        }
-        
-        # Verificar modelos implementados (2 clustering + 8 regresión = 10)
-        clustering_count = 2 if 'clustering_results' in self.results else 0
-        regression_count = len(self.results.get('regression_results', []))
-        total_models = clustering_count + regression_count
-        compliance['modelos_implementados'] = total_models >= 10
-        
-        # Verificar clustering
-        compliance['clustering_completado'] = 'clustering_results' in self.results
-        
-        # Verificar regresión
-        compliance['regresion_completada'] = len(self.results.get('regression_results', [])) >= 8
-        
-        # Verificar métricas
-        if 'regression_results' in self.results:
-            required_metrics = ['RMSE', 'MAE', 'R²']
-            available_metrics = list(self.results['regression_results'].columns)
-            compliance['metricas_evaluadas'] = all(m in available_metrics for m in required_metrics)
-        
-        # Verificar justificación
-        compliance['justificacion_generada'] = (
-            'regression_recommendation' in self.results and 
-            self.results['regression_recommendation'] is not None
-        )
-        
-        # Verificar visualizaciones
-        compliance['visualizaciones_creadas'] = 'visualizations' in self.results
-        
-        return compliance
-    
-    def _print_final_summary(self, summary: Dict[str, Any]) -> None:
+    def _print_final_summary(self, summary: Dict) -> None:
         """
         Imprime el resumen final.
-        
-        Args:
-            summary (Dict[str, Any]): Resumen a imprimir
         """
-        print("\n🎯 RESUMEN EJECUTIVO DEL ANÁLISIS:")
+        print("📋 RESUMEN DEL ANÁLISIS:")
+        print(f"   • Modo: {summary['pipeline_info']['analysis_mode']}")
+        print(f"   • Cuentas: {len(summary['pipeline_info']['target_accounts'])}")
+        print(f"   • Duración: {summary['pipeline_info']['duration']:.2f}s")
         
         if 'data_summary' in summary:
-            data_sum = summary['data_summary']
-            print(f"   • Dataset: {data_sum['total_tweets']:,} tweets de {data_sum['total_usuarios']} usuarios")
+            print(f"   • Registros totales: {summary['data_summary']['total_records']:,}")
+            print(f"   • Tipos de datos: {summary['data_summary']['data_types_loaded']}")
         
-        if 'features_summary' in summary:
-            feat_sum = summary['features_summary']
-            print(f"   • Features: {feat_sum['total_features']} total ({feat_sum['features_engineered']} engineered)")
-        
-        if 'best_clustering' in summary:
-            clust_sum = summary['best_clustering']
-            print(f"   • Mejor clustering: {clust_sum['algoritmo']} (Silhouette: {clust_sum['silhouette_score']:.3f})")
-        
-        if 'best_regression' in summary:
-            reg_sum = summary['best_regression']
-            print(f"   • Mejor regresión: {reg_sum['modelo']} (R²: {reg_sum['r2_score']:.3f})")
-        
-        print(f"\n✅ CUMPLIMIENTO DE OBJETIVOS:")
-        compliance = summary['objectives_met']
-        for objetivo, cumplido in compliance.items():
-            status = "✅" if cumplido else "❌"
-            print(f"   {status} {objetivo.replace('_', ' ').title()}")
-        
-        # Porcentaje de cumplimiento
-        cumplimiento_pct = sum(compliance.values()) / len(compliance) * 100
-        print(f"\n📊 NIVEL DE CUMPLIMIENTO: {cumplimiento_pct:.1f}%")
-        
-        if cumplimiento_pct >= 80:
-            print("🎉 ¡EXCELENTE! Proyecto completado satisfactoriamente")
-        elif cumplimiento_pct >= 60:
-            print("👍 BUENO: Objetivos principales cumplidos")
-        else:
-            print("⚠️ REQUIERE ATENCIÓN: Algunos objetivos no cumplidos")
-    
-    def export_results_summary(self, filename: str = None) -> str:
-        """
-        Exporta un resumen de resultados a archivo de texto.
-        
-        Args:
-            filename (str): Nombre del archivo (opcional)
-            
-        Returns:
-            str: Contenido del resumen
-        """
-        if filename is None:
-            timestamp_str = self.timestamp.strftime('%Y%m%d_%H%M%S')
-            filename = f"analisis_twitter_resumen_{timestamp_str}.txt"
-        
-        content = f"""
-RESUMEN DE ANÁLISIS DE TWITTER - {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
-{'='*80}
+        if summary['recommendations']:
+            print("\n💡 RECOMENDACIONES:")
+            for rec in summary['recommendations']:
+                print(f"   • {rec}")
 
-CONFIGURACIÓN:
-- Usuario objetivo: {self.usuario_objetivo}
-- Variable objetivo: {self.target_variable}
-
-DATOS PROCESADOS:
-- Total tweets: {self.results['data_info']['total_tweets']:,}
-- Total usuarios: {self.results['data_info']['total_usuarios']}
-- Features utilizadas: {len(self.results['features'])}
-
-RESULTADOS DE CLUSTERING:
-- K-Means: {self.results['clustering_results']['kmeans']['n_clusters']} clusters, Silhouette: {self.results['clustering_results']['kmeans']['silhouette_score']:.3f}
-- DBSCAN: {self.results['clustering_results']['dbscan']['n_clusters']} clusters, Silhouette: {self.results['clustering_results']['dbscan']['silhouette_score']:.3f}
-- Mejor algoritmo: {self.results['clustering_analysis']['mejor_algoritmo']}
-
-RESULTADOS DE REGRESIÓN:
-"""
-        
-        if len(self.results['regression_results']) > 0:
-            content += f"- Modelos evaluados: {len(self.results['regression_results'])}\n"
-            if self.results['regression_recommendation']:
-                rec = self.results['regression_recommendation']
-                content += f"- Mejor modelo: {rec['modelo']}\n"
-                content += f"- R² Score: {rec['metrics']['R²']:.3f}\n"
-                content += f"- RMSE: {rec['metrics']['RMSE']:.3f}\n"
-        
-        content += f"""
-CUMPLIMIENTO DE OBJETIVOS:
-"""
-        compliance = self.results['final_summary']['objectives_met']
-        for obj, status in compliance.items():
-            content += f"- {obj.replace('_', ' ').title()}: {'✅' if status else '❌'}\n"
-        
-        # Guardar archivo
-        try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f"📄 Resumen exportado a: {filename}")
-        except Exception as e:
-            print(f"⚠️ Error al exportar resumen: {e}")
-        
-        return content
-
-def run_twitter_analysis(usuario_objetivo: str = 'interbank',
-                        target_variable: str = 'likes',
-                        export_summary: bool = True) -> Dict[str, Any]:
+# Funciones de compatibilidad para uso legacy
+def run_twitter_analysis(usuario_objetivo: str = 'Interbank', 
+                        target_variable: str = 'likes') -> Dict[str, Any]:
     """
-    Función principal para ejecutar el análisis completo.
+    Función de compatibilidad para ejecutar análisis de una sola cuenta.
     
     Args:
-        usuario_objetivo (str): Usuario específico o 'todos'
-        target_variable (str): Variable objetivo para regresión
-        export_summary (bool): Si exportar resumen a archivo
+        usuario_objetivo (str): Usuario específico
+        target_variable (str): Variable objetivo
         
     Returns:
-        Dict[str, Any]: Resultados completos del análisis
+        Dict[str, Any]: Resultados del análisis
     """
-    # Crear y ejecutar pipeline
     pipeline = TwitterAnalysisPipeline(
-        usuario_objetivo=usuario_objetivo,
-        target_variable=target_variable
+        target_accounts=[usuario_objetivo],
+        target_variable=target_variable,
+        analysis_mode='individual'
     )
+    return pipeline.run_complete_analysis()
+
+def run_multi_account_analysis(target_accounts: List[str] = None,
+                              target_variable: str = 'likes',
+                              analysis_mode: str = 'consolidado') -> Dict[str, Any]:
+    """
+    Función principal para ejecutar análisis multi-cuenta.
     
-    results = pipeline.run_complete_analysis()
-    
-    # Exportar resumen si se solicita
-    if export_summary:
-        pipeline.export_results_summary()
-    
-    return results
+    Args:
+        target_accounts (List[str]): Lista de cuentas objetivo
+        target_variable (str): Variable objetivo
+        analysis_mode (str): Modo de análisis
+        
+    Returns:
+        Dict[str, Any]: Resultados del análisis
+    """
+    pipeline = TwitterAnalysisPipeline(
+        target_accounts=target_accounts,
+        target_variable=target_variable,
+        analysis_mode=analysis_mode
+    )
+    return pipeline.run_complete_analysis()
 
 if __name__ == "__main__":
-    # Ejecución principal
-    print("🚀 EJECUTANDO ANÁLISIS COMPLETO DE TWITTER")
-    print("="*60)
+    print("🧪 EJEMPLO DE USO DEL PIPELINE MULTI-CUENTA")
+    print("="*50)
     
-    # Configuración principal (puedes modificar estos valores)
-    USUARIO = 'interbank'  # Opciones: 'interbank', 'todos', etc.
-    TARGET = 'likes'       # Opciones: 'likes', 'retweets', 'respuestas', etc.
-    
+    # Ejemplo 1: Análisis consolidado de todas las cuentas
+    print("\n1️⃣ Análisis consolidado:")
     try:
-        # Ejecutar análisis
-        resultados = run_twitter_analysis(
-            usuario_objetivo=USUARIO,
-            target_variable=TARGET,
-            export_summary=True
+        results_consolidated = run_multi_account_analysis(
+            target_accounts=['Interbank', 'BanBif', 'BCPComunica'],
+            analysis_mode='consolidado'
         )
-        
-        print(f"\n🎉 ANÁLISIS COMPLETADO EXITOSAMENTE")
-        print(f"📊 Resultados disponibles en la variable 'resultados'")
-        print(f"📄 Resumen exportado a archivo")
-        
+        print("✅ Análisis consolidado completado")
     except Exception as e:
-        print(f"\n❌ ERROR DURANTE LA EJECUCIÓN: {str(e)}")
-        print("Por favor, verifica que los datos estén disponibles y las dependencias instaladas.")
-        raise e
+        print(f"❌ Error en análisis consolidado: {e}")
+    
+    # Ejemplo 2: Análisis comparativo
+    print("\n2️⃣ Análisis comparativo:")
+    try:
+        results_comparative = run_multi_account_analysis(
+            target_accounts=['Interbank', 'BanBif'],
+            analysis_mode='comparativo'
+        )
+        print("✅ Análisis comparativo completado")
+    except Exception as e:
+        print(f"❌ Error en análisis comparativo: {e}")
+    
+    # Ejemplo 3: Análisis individual (compatibilidad)
+    print("\n3️⃣ Análisis individual (compatibilidad):")
+    try:
+        results_individual = run_twitter_analysis('Interbank')
+        print("✅ Análisis individual completado")
+    except Exception as e:
+        print(f"❌ Error en análisis individual: {e}")

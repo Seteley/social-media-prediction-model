@@ -344,6 +344,122 @@ class ClusteringAnalyzer:
         
         return data_with_clusters
 
+    def find_optimal_k_elbow(self, X_scaled: np.ndarray, k_range: range = None) -> Tuple[int, Dict]:
+        """
+        Encuentra el número óptimo de clusters usando el método del codo.
+        
+        Args:
+            X_scaled (np.ndarray): Datos escalados
+            k_range (range): Rango de k a evaluar
+            
+        Returns:
+            Tuple[int, Dict]: k óptimo e información del análisis
+        """
+        print("📈 Aplicando método del codo para encontrar k óptimo...")
+        
+        if k_range is None:
+            k_range = range(2, 11)
+        
+        inercias = []
+        silhouettes = []
+        k_values = list(k_range)
+        
+        for k in k_values:
+            # Entrenar K-Means con k clusters
+            kmeans_temp = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels_temp = kmeans_temp.fit_predict(X_scaled)
+            
+            # Calcular métricas
+            inercias.append(kmeans_temp.inertia_)
+            silhouettes.append(silhouette_score(X_scaled, labels_temp))
+            
+            print(f"   k={k}: Inercia={kmeans_temp.inertia_:.2f}, Silhouette={silhouettes[-1]:.3f}")
+        
+        # Encontrar el codo usando la segunda derivada
+        optimal_k = self._find_elbow_point(k_values, inercias)
+        
+        # También encontrar k con mejor silhouette
+        best_silhouette_k = k_values[np.argmax(silhouettes)]
+        
+        elbow_info = {
+            'k_values': k_values,
+            'inercias': inercias,
+            'silhouettes': silhouettes,
+            'optimal_k_elbow': optimal_k,
+            'optimal_k_silhouette': best_silhouette_k,
+            'recommended_k': best_silhouette_k  # Preferir silhouette sobre codo
+        }
+        
+        print(f"\n🎯 Análisis de k óptimo:")
+        print(f"   • K por método del codo: {optimal_k}")
+        print(f"   • K por mejor silhouette: {best_silhouette_k}")
+        print(f"   • K recomendado: {elbow_info['recommended_k']}")
+        
+        return elbow_info['recommended_k'], elbow_info
+    
+    def _find_elbow_point(self, k_values: List[int], inercias: List[float]) -> int:
+        """
+        Encuentra el punto del codo usando la segunda derivada.
+        
+        Args:
+            k_values (List[int]): Valores de k
+            inercias (List[float]): Valores de inercia
+            
+        Returns:
+            int: k óptimo según el método del codo
+        """
+        # Calcular la segunda derivada
+        if len(inercias) < 3:
+            return k_values[0]
+        
+        # Normalizar las diferencias
+        diffs = np.diff(inercias)
+        second_diffs = np.diff(diffs)
+        
+        # El codo es donde la segunda derivada es máxima (más negativa)
+        elbow_idx = np.argmax(second_diffs) + 1  # +1 porque perdimos un elemento en cada diff
+        
+        return k_values[elbow_idx] if elbow_idx < len(k_values) else k_values[-1]
+    
+    def plot_elbow_analysis(self, elbow_info: Dict) -> plt.Figure:
+        """
+        Genera gráficos del análisis del método del codo.
+        
+        Args:
+            elbow_info (Dict): Información del análisis del codo
+            
+        Returns:
+            plt.Figure: Figura con los gráficos
+        """
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        
+        k_values = elbow_info['k_values']
+        inercias = elbow_info['inercias']
+        silhouettes = elbow_info['silhouettes']
+        
+        # Gráfico del método del codo
+        ax1.plot(k_values, inercias, marker='o', linewidth=2, markersize=8)
+        ax1.axvline(x=elbow_info['optimal_k_elbow'], color='red', linestyle='--', 
+                   label=f'Codo k={elbow_info["optimal_k_elbow"]}')
+        ax1.set_xlabel('Número de Clusters (k)')
+        ax1.set_ylabel('Inercia (WCSS)')
+        ax1.set_title('Método del Codo')
+        ax1.grid(True, alpha=0.3)
+        ax1.legend()
+        
+        # Gráfico de Silhouette Score
+        ax2.plot(k_values, silhouettes, marker='s', linewidth=2, markersize=8, color='green')
+        ax2.axvline(x=elbow_info['optimal_k_silhouette'], color='red', linestyle='--',
+                   label=f'Mejor Silhouette k={elbow_info["optimal_k_silhouette"]}')
+        ax2.set_xlabel('Número de Clusters (k)')
+        ax2.set_ylabel('Silhouette Score')
+        ax2.set_title('Análisis de Silhouette Score')
+        ax2.grid(True, alpha=0.3)
+        ax2.legend()
+        
+        plt.tight_layout()
+        return fig
+
 def perform_clustering_analysis(X_scaled: np.ndarray, 
                               data: pd.DataFrame = None,
                               config: Dict = None) -> Tuple[Dict, Dict, pd.DataFrame]:
