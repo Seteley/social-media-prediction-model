@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import json
 import duckdb
 import pandas as pd
 import sys
+from typing import Dict, Any
 from app.api.schemas_regression import (
     TrainRegressionRequest, TrainRegressionResponse, ModelMetricsResponse
 )
+from app.auth.dependencies import auth_required
+from app.auth.auth_service import auth_service
 
 # Agregar path del proyecto para imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,9 +26,22 @@ MODEL_BASE_PATH = Path("models")
 METRICAS_PATH = Path("metricas")
 DB_PATH = Path("data/base_de_datos/social_media.duckdb")
 
-@router.get("/users")
-def list_users():
-    """Lista los usuarios con modelos de regresión disponibles."""
+@router.get("/users",
+    responses={
+        200: {"description": "Lista de usuarios con modelos obtenida exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"}
+    }
+)
+def list_users(current_user: Dict[str, Any] = Depends(auth_required)):
+    """
+    Lista los usuarios con modelos de regresión disponibles.
+    
+    **Requiere:** Token JWT válido
+    
+    **Códigos de respuesta:**
+    - 200: Lista obtenida exitosamente  
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    """
     if not MODEL_BASE_PATH.exists():
         return []
     
@@ -36,28 +52,73 @@ def list_users():
     
     return users
 
-@router.get("/available-accounts")
-def list_available_accounts():
-    """Lista todas las cuentas disponibles en la base de datos."""
+@router.get("/available-accounts",
+    responses={
+        200: {"description": "Lista de cuentas disponibles obtenida exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
+def list_available_accounts(current_user: Dict[str, Any] = Depends(auth_required)):
+    """
+    Lista todas las cuentas disponibles en la base de datos.
+    
+    **Requiere:** Token JWT válido
+    
+    **Códigos de respuesta:**
+    - 200: Lista obtenida exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 500: Error interno del servidor
+    """
     try:
         if not verify_database():
-            raise HTTPException(status_code=500, detail="Database verification failed")
+            raise HTTPException(status_code=500, detail="Verificación de base de datos falló")
         
         accounts = get_available_accounts()
         return {"accounts": accounts, "total": len(accounts)}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting accounts: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error obteniendo cuentas: {str(e)}")
 
-@router.get("/metrics/{username}", response_model=ModelMetricsResponse)
-def get_model_metrics(username: str):
-    """Obtiene las métricas del modelo de regresión de un usuario."""
+@router.get("/metrics/{username}", 
+    response_model=ModelMetricsResponse,
+    responses={
+        200: {"description": "Métricas del modelo obtenidas exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Métricas no encontradas"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
+def get_model_metrics(
+    username: str,
+    current_user: Dict[str, Any] = Depends(auth_required)
+):
+    """
+    Obtiene las métricas del modelo de regresión de un usuario.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Métricas obtenidas exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Métricas no encontradas
+    - 500: Error interno
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     metrics_path = METRICAS_PATH / f"{username}.json"
     
     if not metrics_path.exists():
         raise HTTPException(
             status_code=404, 
-            detail=f"Metrics for user {username} not found."
+            detail=f"Métricas para el usuario @{username} no encontradas."
         )
     
     try:
@@ -67,17 +128,46 @@ def get_model_metrics(username: str):
         return ModelMetricsResponse(**metrics_data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error cargando métricas: {str(e)}")
 
-@router.get("/history/{username}")
-def get_model_history(username: str):
-    """Obtiene el historial de entrenamientos para un usuario."""
+@router.get("/history/{username}",
+    responses={
+        200: {"description": "Historial de entrenamientos obtenido exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Historial no encontrado"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
+def get_model_history(
+    username: str,
+    current_user: Dict[str, Any] = Depends(auth_required)
+):
+    """
+    Obtiene el historial de entrenamientos para un usuario.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Historial obtenido exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Historial no encontrado
+    - 500: Error interno
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     metrics_path = METRICAS_PATH / f"{username}.json"
     
     if not metrics_path.exists():
         raise HTTPException(
             status_code=404, 
-            detail=f"No training history found for user {username}."
+            detail=f"No se encontró historial de entrenamientos para @{username}."
         )
     
     try:
@@ -102,27 +192,61 @@ def get_model_history(username: str):
         return history
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error cargando historial: {str(e)}")
 
-@router.post("/train", response_model=TrainRegressionResponse)
-def train_regression_model(req: TrainRegressionRequest):
-    """Entrena o reentrena el modelo de regresión para un usuario usando datos de DuckDB."""
+@router.get("/train/{username}", 
+    response_model=TrainRegressionResponse,
+    responses={
+        200: {"description": "Modelo entrenado exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Cuenta no encontrada o sin datos"},
+        400: {"description": "Error en el preprocesamiento de datos"},
+        500: {"description": "Error en el entrenamiento del modelo"}
+    }
+)
+def train_regression_model(
+    username: str,
+    current_user: Dict[str, Any] = Depends(auth_required),
+    target_variable: str = "seguidores",
+    test_size: float = 0.2,
+    random_state: int = 42
+):
+    """
+    Entrena o reentrena el modelo de regresión para un usuario usando datos de DuckDB.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Parámetros:**
+    - username: Nombre de la cuenta (debe pertenecer a tu empresa)
+    - target_variable: Variable objetivo (default: "seguidores")
+    - test_size: Proporción de datos para prueba (default: 0.2)
+    - random_state: Semilla aleatoria (default: 42)
+    
+    **Códigos de respuesta:**
+    - 200: Modelo entrenado exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Cuenta no encontrada o sin datos
+    - 400: Error en el preprocesamiento
+    - 500: Error interno en el entrenamiento
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
     
     try:
-        # Extraer parámetros del request
-        username = req.username
-        target_variable = req.target_variable or "seguidores"
-        test_size = req.test_size or 0.2
-        random_state = req.random_state or 42
-        
         # Validar que la cuenta existe
         available_accounts = get_available_accounts()
         if username not in available_accounts:
             raise HTTPException(
                 status_code=404, 
-                detail=f"Account {username} not found. Available: {available_accounts}"
+                detail=f"Cuenta @{username} no encontrada. Disponibles: {available_accounts}"
             )
-        
+
         print(f"🚀 Training regression model for {username}")
         print(f"🎯 Target variable: {target_variable}")
         
@@ -132,8 +256,8 @@ def train_regression_model(req: TrainRegressionRequest):
         
         if not data_dict or 'combined' not in data_dict:
             raise HTTPException(
-                status_code=400, 
-                detail=f"No data found for account {username}"
+                status_code=404, 
+                detail=f"No se encontraron datos para la cuenta @{username}"
             )
         
         data = data_dict['combined']
@@ -146,7 +270,7 @@ def train_regression_model(req: TrainRegressionRequest):
         if processed_data is None or len(processed_data) == 0:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Error in data preprocessing for {username}"
+                detail=f"Error en el preprocesamiento de datos para @{username}"
             )
         
         print(f"🔧 Data preprocessed: {len(processed_data)} records, {len(feature_names)} features")
@@ -162,7 +286,7 @@ def train_regression_model(req: TrainRegressionRequest):
         if not report:
             raise HTTPException(
                 status_code=500, 
-                detail=f"Error training models for {username}"
+                detail=f"Error en el entrenamiento de modelos para @{username}"
             )
         
         # 4. Obtener información del mejor modelo
@@ -170,7 +294,7 @@ def train_regression_model(req: TrainRegressionRequest):
         model_path = f"models/{username}/regresion.pkl"
         
         return TrainRegressionResponse(
-            message=f"Regression model trained successfully for {username}",
+            message=f"Modelo de regresión entrenado exitosamente para @{username}",
             best_model=best_model_info.get('model_name', 'Unknown'),
             metrics={
                 "r2_score": best_model_info.get('r2_score', 0),
@@ -188,13 +312,40 @@ def train_regression_model(req: TrainRegressionRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Training error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de entrenamiento: {str(e)}")
 
 
 
-@router.delete("/model/{username}")
-def delete_model(username: str):
-    """Elimina el modelo y métricas de un usuario."""
+@router.delete("/model/{username}",
+    responses={
+        200: {"description": "Modelo eliminado exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo no encontrado"}
+    }
+)
+def delete_model(
+    username: str,
+    current_user: Dict[str, Any] = Depends(auth_required)
+):
+    """
+    Elimina el modelo y métricas de un usuario.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Modelo eliminado exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     metrics_path = METRICAS_PATH / f"{username}.json"
     
@@ -211,23 +362,52 @@ def delete_model(username: str):
     if not deleted_files:
         raise HTTPException(
             status_code=404, 
-            detail=f"No model or metrics found for user {username}"
+            detail=f"No se encontró modelo o métricas para @{username}"
         )
     
     return {
-        "message": f"Model deleted for user {username}",
+        "message": f"Modelo eliminado para @{username}",
         "deleted_files": deleted_files
     }
 
-@router.get("/compare-models/{username}")
-def compare_models(username: str):
-    """Compara todos los modelos entrenados para un usuario."""
+@router.get("/compare-models/{username}",
+    responses={
+        200: {"description": "Comparación de modelos obtenida exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Datos de comparación no encontrados"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
+def compare_models(
+    username: str,
+    current_user: Dict[str, Any] = Depends(auth_required)
+):
+    """
+    Compara todos los modelos entrenados para un usuario.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Comparación obtenida exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Datos de comparación no encontrados
+    - 500: Error interno
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     metrics_path = METRICAS_PATH / f"{username}.json"
     
     if not metrics_path.exists():
         raise HTTPException(
             status_code=404, 
-            detail=f"No model comparison data found for user {username}"
+            detail=f"No se encontraron datos de comparación para @{username}"
         )
     
     try:
@@ -251,4 +431,4 @@ def compare_models(username: str):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error comparing models: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error comparando modelos: {str(e)}")

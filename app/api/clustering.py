@@ -4,7 +4,9 @@ import pickle
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from app.auth.dependencies import get_current_user
+from typing import Dict, Any
+from app.auth.dependencies import auth_required
+from app.auth.auth_service import auth_service
 
 router = APIRouter()
 
@@ -33,10 +35,19 @@ class ClusteringResponse(BaseModel):
 def predict_clustering(
     username: str,
     req: ClusteringRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(auth_required)
 ):
     """
     Predicción de clustering con autenticación JWT y control de acceso por empresa
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    Parámetros:
+    - username: Nombre de la cuenta (debe pertenecer a tu empresa)
+    - req: Datos para clustering en formato JSON
+    
+    **Headers requeridos:**
+    - Authorization: Bearer {token_jwt}
     
     **Códigos de respuesta:**
     - 200: Clustering exitoso
@@ -45,13 +56,17 @@ def predict_clustering(
     - 404: Modelo no encontrado
     - 400: Error en datos de entrada
     
-    - Requiere autenticación JWT válida
-    - Solo permite acceso a modelos de la misma empresa del usuario autenticado
-    - username: cuenta de la empresa (ej: 'Interbank', 'BCP', etc.)
+    **Ejemplos:**
+    - Usuario admin_interbank puede acceder a username="Interbank"
+    - Usuario admin_bcp puede acceder a username="BCPComunica"
+    - Acceso cruzado devuelve 403 Forbidden
     """
-    # Verificar acceso a la empresa
-    from app.auth.dependencies import verify_company_access
-    verify_company_access(current_user, username)
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
     
     model_path = MODEL_BASE_PATH / username / "clustering.pkl"
     if not model_path.exists():
