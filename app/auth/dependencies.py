@@ -11,14 +11,23 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any
 from app.auth.auth_service import auth_service
 
-# Esquema de seguridad Bearer Token
-security = HTTPBearer()
+# Esquema de seguridad Bearer Token (opcional para manejar 401 correctamente)
+security = HTTPBearer(auto_error=False)
 
 class AuthRequired:
     """Dependencia para requerir autenticación"""
     
     def __call__(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
         """Verifica token y devuelve datos del usuario"""
+        
+        # Si no hay credenciales, devolver 401
+        if not credentials:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token de autenticación requerido",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
         token = credentials.credentials
         
         user = auth_service.get_current_user(token)
@@ -100,4 +109,23 @@ def verify_company_access(current_user: Dict[str, Any], username: str) -> None:
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     """Alias para compatibilidad - obtiene el usuario actual"""
-    return auth_required(credentials)
+    
+    # Si no hay credenciales, devolver 401
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de autenticación requerido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = credentials.credentials
+    user = auth_service.get_current_user(token)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
