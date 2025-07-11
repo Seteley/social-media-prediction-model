@@ -150,10 +150,12 @@ def get_clusters_content(username: str):
     df["cluster"] = labels
     clusters = []
     for cluster_id in sorted(set(labels)):
-        ejemplos = df[df["cluster"] == cluster_id]["contenido"].head(3).tolist()
+        cluster_df = df[df["cluster"] == cluster_id]
+        # Convertir cada fila a dict (incluyendo todas las columnas)
+        publicaciones = cluster_df.to_dict(orient="records")
         clusters.append({
             "cluster": int(cluster_id),
-            "ejemplos_contenido": ejemplos
+            "publicaciones": publicaciones
         })
     return {"clusters": clusters}
 
