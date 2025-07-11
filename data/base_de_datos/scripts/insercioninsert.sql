@@ -77,7 +77,7 @@ EJEMPLOS DE TESTING JWT:
    "http://localhost:8000/regression/predict/Interbank?fecha=2025-07-11"
 
 3. ACCESO DENEGADO (diferente empresa):
-   curl -H "Authorization: Bearer TOKEN_INTERBANK" \
+   curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbl9pbnRlcmJhbmsiLCJlbXByZXNhX2lkIjoxLCJyb2wiOiJhZG1pbiIsImV4cCI6MTc1MjIzNTIyM30.Swt3_sMhntX-QX8TfUL6zCrOiRvSUNXYi1P6xpu2rho" \
    "http://localhost:8000/regression/predict/BCPComunica?fecha=2025-07-11"
 
 4. SIN AUTENTICACIÓN (error 401):

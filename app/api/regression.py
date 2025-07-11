@@ -23,7 +23,7 @@ MODEL_BASE_PATH = Path("models")
 def predict_single_get(
     username: str, 
     fecha: str,
-    current_user: Dict[str, Any] = Depends(account_access_required)
+    current_user: Dict[str, Any] = Depends(auth_required)
 ):
     """
     Realiza una predicción de regresión usando una fecha.
@@ -40,6 +40,13 @@ def predict_single_get(
     **Headers requeridos:**
     - Authorization: Bearer {token_jwt}
     """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
     if not model_path.exists():
@@ -176,13 +183,20 @@ def predict_regression_batch(
 @router.get("/model-info/{username}")
 def get_model_info(
     username: str,
-    current_user: Dict[str, Any] = Depends(account_access_required)
+    current_user: Dict[str, Any] = Depends(auth_required)
 ):
     """
     Obtiene información del modelo de regresión guardado.
     
     **Requiere:** Token JWT válido y acceso a la cuenta
     """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
     if not model_path.exists():
@@ -211,13 +225,20 @@ def get_model_info(
 @router.get("/features/{username}")
 def get_required_features(
     username: str,
-    current_user: Dict[str, Any] = Depends(account_access_required)
+    current_user: Dict[str, Any] = Depends(auth_required)
 ):
     """
     Obtiene las features requeridas para hacer predicciones con el modelo.
     
     **Requiere:** Token JWT válido y acceso a la cuenta
     """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+    
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
     if not model_path.exists():

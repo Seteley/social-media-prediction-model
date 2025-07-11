@@ -74,7 +74,30 @@ auth_required = AuthRequired()
 admin_required = AdminRequired()
 account_access_required = AccountAccessRequired()
 
-def get_user_accounts(current_user: Dict[str, Any] = Depends(auth_required)) -> list:
-    """Obtiene las cuentas disponibles para el usuario actual"""
+def verify_company_access(current_user: Dict[str, Any], username: str) -> None:
+    """
+    Verifica que el usuario tenga acceso a la empresa/cuenta especificada
+    
+    Args:
+        current_user: Datos del usuario autenticado
+        username: Nombre de la cuenta/empresa a acceder
+    
+    Raises:
+        HTTPException: Si no tiene acceso
+    """
+    # Los admins tienen acceso a todo
+    if current_user.get('rol') == 'admin':
+        return
+    
+    # Verificar si la empresa tiene acceso a esta cuenta
     empresa_id = current_user.get('empresa_id')
-    return auth_service.get_empresa_users(empresa_id)
+    
+    if not auth_service.user_has_access_to_account(empresa_id, username):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No tiene acceso a la cuenta @{username}"
+        )
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """Alias para compatibilidad - obtiene el usuario actual"""
+    return auth_required(credentials)

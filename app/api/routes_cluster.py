@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import json
 import duckdb
 import pandas as pd
 from app.api.schemas_cluster import TrainClusteringRequest, TrainClusteringResponse
+from app.auth.dependencies import get_current_user, verify_company_access
 import importlib.util
 import sys
 MODELS_PATH = Path(__file__).resolve().parents[2] / "models"
@@ -18,17 +19,27 @@ MODEL_BASE_PATH = Path("models")
 DB_PATH = Path("data/base_de_datos/social_media.duckdb")
 
 @router.get("/users")
-def list_users():
-    """Lista los usuarios con modelos de clustering disponibles."""
+def list_users(current_user: dict = Depends(get_current_user)):
+    """
+    Lista los usuarios con modelos de clustering disponibles.
+    Requiere autenticación JWT.
+    """
     if not MODEL_BASE_PATH.exists():
         return []
     return [d.name for d in MODEL_BASE_PATH.iterdir() if d.is_dir() and (d/"clustering.pkl").exists()]
 
 @router.get("/model-info/{username}")
-def model_info(username: str):
-    """Devuelve metadatos del modelo de clustering de un usuario."""
+def model_info(username: str, current_user: dict = Depends(get_current_user)):
+    """
+    Devuelve metadatos del modelo de clustering de un usuario.
+    Requiere autenticación JWT y acceso a la empresa correspondiente.
+    """
+    # Verificar acceso a la empresa
+    verify_company_access(current_user, username)
+    
     if not DB_PATH.exists():
-        raise HTTPException(status_code=404, detail="DuckDB database not found.")
+        raise HTTPException(status_code=404, detail="Base de datos DuckDB no encontrada.")
+    
     con = duckdb.connect(str(DB_PATH))
     row = con.execute("""
         SELECT tipo_modelo, parametros, fecha_entrenamiento, archivo_modelo, evaluacion
@@ -39,8 +50,10 @@ def model_info(username: str):
         LIMIT 1
     """, [username]).fetchone()
     con.close()
+    
     if not row:
-        raise HTTPException(status_code=404, detail="No model found for user.")
+        raise HTTPException(status_code=404, detail="No se encontró modelo para el usuario.")
+    
     tipo_modelo, parametros, fecha_entrenamiento, archivo_modelo, evaluacion = row
     return {
         "tipo_modelo": tipo_modelo,
@@ -51,10 +64,17 @@ def model_info(username: str):
     }
 
 @router.get("/metrics/{username}")
-def model_metrics(username: str):
-    """Devuelve las métricas de evaluación del modelo de clustering de un usuario."""
+def model_metrics(username: str, current_user: dict = Depends(get_current_user)):
+    """
+    Devuelve las métricas de evaluación del modelo de clustering de un usuario.
+    Requiere autenticación JWT y acceso a la empresa correspondiente.
+    """
+    # Verificar acceso a la empresa
+    verify_company_access(current_user, username)
+    
     if not DB_PATH.exists():
-        raise HTTPException(status_code=404, detail="DuckDB database not found.")
+        raise HTTPException(status_code=404, detail="Base de datos DuckDB no encontrada.")
+    
     con = duckdb.connect(str(DB_PATH))
     row = con.execute("""
         SELECT evaluacion
@@ -65,15 +85,24 @@ def model_metrics(username: str):
         LIMIT 1
     """, [username]).fetchone()
     con.close()
+    
     if not row:
-        raise HTTPException(status_code=404, detail="No model found for user.")
+        raise HTTPException(status_code=404, detail="No se encontró modelo para el usuario.")
+    
     return json.loads(row[0])
 
 @router.get("/history/{username}")
-def model_history(username: str):
-    """Devuelve el historial de modelos entrenados para un usuario."""
+def model_history(username: str, current_user: dict = Depends(get_current_user)):
+    """
+    Devuelve el historial de modelos entrenados para un usuario.
+    Requiere autenticación JWT y acceso a la empresa correspondiente.
+    """
+    # Verificar acceso a la empresa
+    verify_company_access(current_user, username)
+    
     if not DB_PATH.exists():
-        raise HTTPException(status_code=404, detail="DuckDB database not found.")
+        raise HTTPException(status_code=404, detail="Base de datos DuckDB no encontrada.")
+    
     con = duckdb.connect(str(DB_PATH))
     rows = con.execute("""
         SELECT tipo_modelo, parametros, fecha_entrenamiento, archivo_modelo, evaluacion
@@ -83,6 +112,7 @@ def model_history(username: str):
         ORDER BY fecha_entrenamiento DESC, m.id_modelo DESC
     """, [username]).fetchall()
     con.close()
+    
     history = []
     for row in rows:
         tipo_modelo, parametros, fecha_entrenamiento, archivo_modelo, evaluacion = row
@@ -98,8 +128,14 @@ def model_history(username: str):
 
 # Nuevo endpoint GET para entrenar usando datos de DuckDB
 @router.get("/train/{username}", response_model=TrainClusteringResponse)
-def train_clustering_duckdb(username: str):
-    """Entrena o reentrena el modelo de clustering para un usuario usando los datos de DuckDB."""
+def train_clustering_duckdb(username: str, current_user: dict = Depends(get_current_user)):
+    """
+    Entrena o reentrena el modelo de clustering para un usuario usando los datos de DuckDB.
+    Requiere autenticación JWT y acceso a la empresa correspondiente.
+    """
+    # Verificar acceso a la empresa
+    verify_company_access(current_user, username)
+    
     analyzer = HybridClusteringAnalyzer()
     # Carga automática desde DuckDB
     df = analyzer.load_account_data(username)
@@ -122,31 +158,50 @@ def train_clustering_duckdb(username: str):
 
 # Endpoint para obtener clusters y ejemplos de contenido usando el modelo guardado
 @router.get("/clusters/{username}")
-def get_clusters_content(username: str):
-    """Devuelve los clusters y ejemplos de contenido usando el modelo pkl guardado."""
+def get_clusters_content(username: str, current_user: dict = Depends(get_current_user)):
+    """
+    Devuelve los clusters y ejemplos de contenido usando el modelo pkl guardado.
+    Requiere autenticación JWT y acceso a la empresa correspondiente.
+    """
+    # Verificar acceso a la empresa
+    verify_company_access(current_user, username)
+    
     import pickle
     model_path = MODEL_BASE_PATH / username / "clustering.pkl"
     if not model_path.exists():
-        raise HTTPException(status_code=404, detail="Modelo no encontrado para el usuario.")
+        raise HTTPException(
+            status_code=404, 
+            detail="Modelo no encontrado para el usuario."
+        )
+    
     # Cargar modelo
     with open(model_path, "rb") as f:
         model = pickle.load(f)
+    
     analyzer = HybridClusteringAnalyzer()
     df = analyzer.load_account_data(username)
     features = ["engagement_rate", "vistas"]
+    
     # Calcular métricas de engagement si no existen
     if "engagement_rate" not in df.columns or "vistas" not in df.columns:
         df = analyzer.calculate_engagement_metrics(df)
+    
     X = df[features].fillna(0).values
+    
     # Escalar los datos igual que en entrenamiento
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+    
     # Predecir clusters
     try:
         labels = model.predict(X_scaled)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al predecir clusters: {str(e)}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Error al predecir clusters: {str(e)}"
+        )
+    
     df["cluster"] = labels
     clusters = []
     for cluster_id in sorted(set(labels)):
