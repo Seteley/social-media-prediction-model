@@ -684,6 +684,21 @@ class HybridClusteringAnalyzer:
         }
     
     def save_results(self, username: str, output_dir: str = 'results'):
+        def to_serializable(obj):
+            """Recursively convert numpy types to native Python types for JSON serialization."""
+            import numpy as np
+            if isinstance(obj, dict):
+                return {k: to_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [to_serializable(i) for i in obj]
+            elif isinstance(obj, (np.integer,)):
+                return int(obj)
+            elif isinstance(obj, (np.floating,)):
+                return float(obj)
+            elif isinstance(obj, (np.ndarray,)):
+                return obj.tolist()
+            else:
+                return obj
         """
         Guarda los resultados del análisis en archivos.
         
@@ -715,12 +730,14 @@ class HybridClusteringAnalyzer:
         best_params = results['clustering'][best_model_name]['params']
         best_eval = results['evaluation'][best_model_name]
         model_type = 'KMEANS' if 'kmeans' in best_model_name else 'DBSCAN'
-        # Parámetros relevantes
-        param_str = json.dumps(best_params)
+        # Convertir a tipos serializables
+        best_params_serializable = to_serializable(best_params)
         eval_dict = {k: best_eval[k] for k in ['silhouette_score','davies_bouldin_score','calinski_harabasz_score','n_clusters'] if k in best_eval}
         if 'n_noise' in best_eval:
             eval_dict['n_noise'] = best_eval['n_noise']
-        eval_str = json.dumps(eval_dict)
+        eval_dict_serializable = to_serializable(eval_dict)
+        param_str = json.dumps(best_params_serializable)
+        eval_str = json.dumps(eval_dict_serializable)
         # Guardar modelo pkl
         model_dir = Path('models') / username
         model_dir.mkdir(parents=True, exist_ok=True)
