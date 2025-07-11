@@ -1,0 +1,4 @@
+,silhouette_score,davies_bouldin_score,calinski_harabasz_score,n_clusters
+kmeans_elbow,0.6840633979493451,0.38831071489223107,55.667318856860845,3.0
+kmeans_silhouette,0.6840633979493451,0.38831071489223107,55.667318856860845,3.0
+dbscan,0.0,inf,0.0,1.0

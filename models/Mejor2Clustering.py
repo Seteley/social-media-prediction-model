@@ -839,7 +839,7 @@ if __name__ == "__main__":
     analyzer = HybridClusteringAnalyzer()
     
     # Analizar una cuenta específica
-    username = "BanBif"
+    username = "BancoPichincha"
     results = analyzer.run_clustering_analysis(
         username=username,
         features=['engagement_rate', 'vistas'],
