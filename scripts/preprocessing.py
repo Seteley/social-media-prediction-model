@@ -1,466 +1,432 @@
 # =============================================================================
-# PREPROCESAMIENTO Y FEATURE ENGINEERING
+# PREPROCESAMIENTO PARA MODELOS DE REGRESIÓN POR CUENTA
 # =============================================================================
 
 """
-Módulo para preprocesamiento de datos y creación de features.
-Incluye limpieza, feature engineering y normalización de datos para múltiples cuentas.
-Maneja tanto datos clean como métricas.
+Módulo de preprocesamiento específico para modelos de regresión por cuenta individual.
+Enfoque: Preparar datos para predicción de número de seguidores.
 """
 
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from typing import Tuple, List, Dict, Optional, Union
-from config import PROJECT_CONFIG, CUENTAS_DISPONIBLES
+from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
+from sklearn.feature_selection import SelectKBest, f_regression
+from .config import TARGET_VARIABLE, FEATURE_CONFIG
 
-class MultiAccountDataPreprocessor:
+class AccountPreprocessor:
     """
-    Clase para manejar el preprocesamiento y feature engineering de datos multi-cuenta de Twitter.
+    Preprocesador para datos de una cuenta específica.
     """
     
-    def __init__(self, features_base: List[str] = None):
+    def __init__(self, account_name: str = None, target_variable: str = None, 
+                 scaling_method='standard', feature_selection=True):
         """
         Inicializa el preprocesador.
         
         Args:
-            features_base (List[str]): Lista de features base
+            account_name (str): Nombre de la cuenta (opcional)
+            target_variable (str): Variable objetivo (opcional)
+            scaling_method (str): Método de escalado ('standard', 'robust', 'minmax')
+            feature_selection (bool): Si aplicar selección de features
         """
-        self.features_base = features_base or PROJECT_CONFIG['features_base']
-        self.scaler = StandardScaler()
-        self.features_info = {}
-        self.cuentas_disponibles = CUENTAS_DISPONIBLES
+        self.account_name = account_name
+        self.target_variable = target_variable or TARGET_VARIABLE
+        self.scaling_method = scaling_method
+        self.feature_selection = feature_selection
+        self.scaler = None
+        self.feature_selector = None
+        self.selected_features = None
         
-    def analyze_data_structure(self, consolidated_data: Dict[str, pd.DataFrame]) -> Dict:
-        """
-        Analiza la estructura de los datos consolidados.
-        
-        Args:
-            consolidated_data (Dict[str, pd.DataFrame]): Datos consolidados
-            
-        Returns:
-            Dict: Información sobre la estructura de datos
-        """
-        structure_info = {
-            'data_types': list(consolidated_data.keys()),
-            'total_dataframes': len(consolidated_data),
-            'accounts_info': {},
-            'columns_by_type': {}
-        }
-        
-        print("📊 ANÁLISIS DE ESTRUCTURA DE DATOS")
-        print("="*50)
-        
-        for data_type, df in consolidated_data.items():
-            print(f"\n📈 {data_type.upper()}:")
-            print(f"   • Shape: {df.shape}")
-            print(f"   • Columnas: {list(df.columns)}")
-            
-            structure_info['columns_by_type'][data_type] = list(df.columns)
-            
-            if 'usuario' in df.columns:
-                accounts = df['usuario'].unique()
-                print(f"   • Cuentas: {list(accounts)}")
-                structure_info['accounts_info'][data_type] = list(accounts)
-                
-                # Información por cuenta
-                for cuenta in accounts:
-                    cuenta_data = df[df['usuario'] == cuenta]
-                    print(f"     - {cuenta}: {len(cuenta_data):,} registros")
-        
-        return structure_info
-    
-    def check_feature_availability(self, data: pd.DataFrame, data_type: str = 'clean') -> Tuple[List[str], List[str]]:
-        """
-        Verifica la disponibilidad de features en el dataset.
-        
-        Args:
-            data (pd.DataFrame): DataFrame a verificar
-            data_type (str): Tipo de datos ('clean', 'metricas')
-            
-        Returns:
-            Tuple[List[str], List[str]]: Features disponibles y faltantes
-        """
-        # Adaptar features base según el tipo de datos
-        if data_type == 'metricas':
-            # Para datos de métricas, buscar columnas similares o agregadas
-            features_base_adapted = self._adapt_features_for_metricas(data)
+        # Configurar scaler
+        if scaling_method == 'standard':
+            self.scaler = StandardScaler()
+        elif scaling_method == 'robust':
+            self.scaler = RobustScaler()
+        elif scaling_method == 'minmax':
+            self.scaler = MinMaxScaler()
         else:
-            features_base_adapted = self.features_base
-        
-        features_disponibles = [col for col in features_base_adapted if col in data.columns]
-        features_faltantes = [col for col in features_base_adapted if col not in data.columns]
-        
-        print(f"📊 Análisis de features ({data_type}):")
-        print(f"   ✅ Disponibles: {features_disponibles}")
-        if features_faltantes:
-            print(f"   ❌ Faltantes: {features_faltantes}")
-            
-        return features_disponibles, features_faltantes
+            raise ValueError(f"Método de escalado no válido: {scaling_method}")
     
-    def _adapt_features_for_metricas(self, data: pd.DataFrame) -> List[str]:
+    def fit_transform(self, X, y):
         """
-        Adapta las features base para datos de métricas.
+        Ajusta el preprocesador y transforma los datos.
         
         Args:
-            data (pd.DataFrame): DataFrame de métricas
+            X (pd.DataFrame): Features
+            y (pd.Series): Target variable
             
         Returns:
-            List[str]: Features adaptadas
+            tuple: (X_processed, feature_names, preprocessing_info)
         """
-        features_adapted = []
+        print(f"🔧 Preprocesando datos...")
+        print(f"   📊 Shape inicial: {X.shape}")
         
-        # Mapeo de features estándar a posibles nombres en métricas
-        feature_mapping = {
-            'likes': ['likes', 'promedio_likes', 'total_likes', 'likes_avg'],
-            'retweets': ['retweets', 'promedio_retweets', 'total_retweets', 'retweets_avg'],
-            'respuestas': ['respuestas', 'promedio_respuestas', 'total_respuestas', 'respuestas_avg'],
-            'guardados': ['guardados', 'promedio_guardados', 'total_guardados', 'guardados_avg'],
-            'vistas': ['vistas', 'promedio_vistas', 'total_vistas', 'vistas_avg']
-        }
+        # 1. Limpiar datos
+        X_clean, y_clean = self._clean_data(X, y)
+        print(f"   🧹 Shape después de limpieza: {X_clean.shape}")
         
-        # Buscar features disponibles en los datos de métricas
-        for base_feature in self.features_base:
-            possible_names = feature_mapping.get(base_feature, [base_feature])
-            for possible_name in possible_names:
-                if possible_name in data.columns:
-                    features_adapted.append(possible_name)
-                    break
-            else:
-                # Si no se encuentra, usar el nombre base (se marcará como faltante)
-                features_adapted.append(base_feature)
+        # 2. Crear features adicionales
+        X_enhanced = self._create_additional_features(X_clean)
+        print(f"   ⚙️  Shape después de feature engineering: {X_enhanced.shape}")
         
-        # Añadir features específicas de métricas si están disponibles
-        metricas_specific = [
-            'engagement_rate', 'reach', 'impressions', 'follower_growth',
-            'promedio_engagement', 'tasa_interaccion', 'alcance'
-        ]
-        
-        for feature in metricas_specific:
-            if feature in data.columns:
-                features_adapted.append(feature)
-        
-        return features_adapted
-    
-    def create_engineered_features(self, data: pd.DataFrame, features_disponibles: List[str]) -> Tuple[pd.DataFrame, List[str]]:
-        """
-        Crea features derivadas mediante feature engineering.
-        
-        Args:
-            data (pd.DataFrame): DataFrame original
-            features_disponibles (List[str]): Features disponibles
-            
-        Returns:
-            Tuple[pd.DataFrame, List[str]]: DataFrame con nuevas features y lista de features engineered
-        """
-        print(f"\n🔧 Aplicando Feature Engineering...")
-        
-        data_enhanced = data.copy()
-        features_engineered = []
-        
-        # 1. Longitud del contenido
-        if 'contenido' in data_enhanced.columns:
-            data_enhanced['longitud_tweet'] = data_enhanced['contenido'].astype(str).apply(len)
-            features_disponibles.append('longitud_tweet')
-            features_engineered.append('longitud_tweet')
-            print("   ✅ Longitud del tweet calculada")
-        
-        # 2. Ratio de engagement
-        required_cols = ['likes', 'retweets', 'vistas']
-        if all(col in data_enhanced.columns for col in required_cols):
-            data_enhanced['engagement_rate'] = (
-                (data_enhanced['likes'] + data_enhanced['retweets']) / 
-                (data_enhanced['vistas'] + 1)  # +1 para evitar división por cero
-            )
-            features_disponibles.append('engagement_rate')
-            features_engineered.append('engagement_rate')
-            print("   ✅ Ratio de engagement calculado")
-        
-        # 3. Score de interacción total
-        interaction_cols = [col for col in ['respuestas', 'retweets', 'likes', 'guardados'] 
-                           if col in data_enhanced.columns]
-        if interaction_cols:
-            data_enhanced['interaction_score'] = data_enhanced[interaction_cols].sum(axis=1)
-            features_disponibles.append('interaction_score')
-            features_engineered.append('interaction_score')
-            print("   ✅ Score de interacción total calculado")
-        
-        # 4. Ratios adicionales
-        if 'respuestas' in data_enhanced.columns and 'likes' in data_enhanced.columns:
-            data_enhanced['respuestas_likes_ratio'] = (
-                data_enhanced['respuestas'] / (data_enhanced['likes'] + 1)
-            )
-            features_disponibles.append('respuestas_likes_ratio')
-            features_engineered.append('respuestas_likes_ratio')
-            print("   ✅ Ratio respuestas/likes calculado")
-        
-        # 5. Features logarítmicas para variables con distribución sesgada
-        log_candidates = ['vistas', 'likes', 'retweets']
-        for col in log_candidates:
-            if col in data_enhanced.columns:
-                # Solo aplicar log si hay valores > 0
-                if (data_enhanced[col] > 0).any():
-                    log_col_name = f'log_{col}'
-                    data_enhanced[log_col_name] = np.log1p(data_enhanced[col])  # log1p para manejar 0s
-                    features_disponibles.append(log_col_name)
-                    features_engineered.append(log_col_name)
-                    print(f"   ✅ Feature logarítmica {log_col_name} calculada")
-        
-        return data_enhanced, features_engineered
-    
-    def prepare_feature_matrix(self, data: pd.DataFrame, features: List[str]) -> Tuple[pd.DataFrame, Dict]:
-        """
-        Prepara la matriz de features final.
-        
-        Args:
-            data (pd.DataFrame): DataFrame con todas las features
-            features (List[str]): Lista de features a usar
-            
-        Returns:
-            Tuple[pd.DataFrame, Dict]: Matriz X y estadísticas
-        """
-        print(f"\n📋 Preparando matriz de features...")
-        
-        # Seleccionar features finales y manejar valores faltantes
-        X = data[features].fillna(0)
-        
-        print(f"   • Features seleccionadas: {len(features)}")
-        print(f"   • Dimensiones de X: {X.shape}")
-        
-        # Información estadística básica
-        print(f"\n📈 Estadísticas descriptivas:")
-        stats = X.describe()
-        print(stats.round(2))
-        
-        # Detectar outliers (usando IQR)
-        outliers_info = self._detect_outliers(X)
-        
-        statistics = {
-            'shape': X.shape,
-            'features_count': len(features),
-            'null_values': X.isnull().sum().sum(),
-            'outliers_info': outliers_info,
-            'basic_stats': stats.to_dict()
-        }
-        
-        return X, statistics
-    
-    def _detect_outliers(self, X: pd.DataFrame) -> Dict:
-        """
-        Detecta outliers usando el método IQR.
-        
-        Args:
-            X (pd.DataFrame): Matriz de features
-            
-        Returns:
-            Dict: Información sobre outliers
-        """
-        outliers_info = {}
-        
-        for column in X.columns:
-            Q1 = X[column].quantile(0.25)
-            Q3 = X[column].quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            
-            outliers = X[(X[column] < lower_bound) | (X[column] > upper_bound)]
-            outliers_info[column] = {
-                'count': len(outliers),
-                'percentage': len(outliers) / len(X) * 100,
-                'lower_bound': lower_bound,
-                'upper_bound': upper_bound
-            }
-        
-        return outliers_info
-    
-    def scale_features(self, X: pd.DataFrame) -> Tuple[np.ndarray, Dict]:
-        """
-        Aplica escalado estándar a las features.
-        
-        Args:
-            X (pd.DataFrame): Matriz de features sin escalar
-            
-        Returns:
-            Tuple[np.ndarray, Dict]: Features escaladas e información de escalado
-        """
-        print(f"\n⚡ Aplicando escalado estándar...")
-        
-        X_scaled = self.scaler.fit_transform(X)
-        
-        scaling_info = {
-            'mean_before': X.mean().to_dict(),
-            'std_before': X.std().to_dict(),
-            'mean_after': X_scaled.mean(),
-            'std_after': X_scaled.std(),
-            'scaler_params': {
-                'mean_': self.scaler.mean_.tolist(),
-                'scale_': self.scaler.scale_.tolist()
-            }
-        }
-        
-        print(f"   ✅ Datos escalados exitosamente")
-        print(f"   • Shape final: {X_scaled.shape}")
-        print(f"   • Media post-escalado: {X_scaled.mean():.6f}")
-        print(f"   • Desviación estándar post-escalado: {X_scaled.std():.6f}")
-        
-        return X_scaled, scaling_info
-    
-    def preprocess_data(self, data: pd.DataFrame, data_type: str = 'clean') -> Tuple[np.ndarray, pd.DataFrame, List[str], Dict]:
-        """
-        Pipeline completo de preprocesamiento.
-        
-        Args:
-            data (pd.DataFrame): DataFrame original
-            data_type (str): Tipo de datos ('clean', 'metricas')
-            
-        Returns:
-            Tuple: X_scaled, data_enhanced, features, info_completa
-        """
-        # 1. Verificar features disponibles
-        features_disponibles, features_faltantes = self.check_feature_availability(data, data_type)
-        
-        # 2. Feature engineering
-        data_enhanced, features_engineered = self.create_engineered_features(data, features_disponibles)
-        
-        # 3. Preparar matriz de features
-        X, statistics = self.prepare_feature_matrix(data_enhanced, features_disponibles)
+        # 3. Selección de features
+        if self.feature_selection and len(X_enhanced.columns) > 5:
+            X_selected = self._select_features(X_enhanced, y_clean)
+            print(f"   🎯 Shape después de selección: {X_selected.shape}")
+        else:
+            X_selected = X_enhanced
+            self.selected_features = list(X_enhanced.columns)
         
         # 4. Escalado
-        X_scaled, scaling_info = self.scale_features(X)
+        X_scaled = self._scale_features(X_selected)
+        print(f"   📏 Escalado completado con {self.scaling_method}")
         
-        # 5. Guardar información completa
-        self.features_info = {
-            'features_utilizadas': features_disponibles,
-            'features_originales': self.features_base,
-            'features_engineered': features_engineered,
-            'features_faltantes': features_faltantes,
-            'n_samples': X.shape[0],
-            'n_features': X.shape[1],
-            'statistics': statistics,
-            'scaling_info': scaling_info,
-            'data_type': data_type
+        # Información del preprocesamiento
+        preprocessing_info = {
+            'original_shape': X.shape,
+            'final_shape': X_scaled.shape,
+            'features_removed': set(X.columns) - set(self.selected_features),
+            'scaling_method': self.scaling_method,
+            'samples_removed': len(X) - len(X_scaled)
         }
         
-        print(f"\n✅ Preprocesamiento completado ({data_type}):")
-        for key, value in self.features_info.items():
-            if key not in ['statistics', 'scaling_info']:  # Evitar imprimir dict complejos
-                print(f"   • {key}: {value}")
-        
-        return X_scaled, data_enhanced, features_disponibles, self.features_info
+        return X_scaled, self.selected_features, preprocessing_info
     
-    def preprocess_multi_account_data(self, consolidated_data: Dict[str, pd.DataFrame], 
-                                    target_accounts: List[str] = None) -> Dict[str, Tuple]:
+    def transform(self, X):
         """
-        Preprocesa datos de múltiples cuentas con soporte para clean y métricas.
+        Transforma nuevos datos usando el preprocesador ajustado.
         
         Args:
-            consolidated_data (Dict[str, pd.DataFrame]): Datos consolidados por tipo
-            target_accounts (List[str]): Cuentas objetivo (opcional)
+            X (pd.DataFrame): Features a transformar
             
         Returns:
-            Dict[str, Tuple]: Resultados de preprocesamiento por tipo de datos
+            np.ndarray: Features transformadas
         """
-        print("🔄 PREPROCESAMIENTO MULTI-CUENTA")
-        print("="*50)
+        if self.scaler is None:
+            raise ValueError("El preprocesador debe ser ajustado primero con fit_transform()")
         
-        # Analizar estructura de datos
-        structure_info = self.analyze_data_structure(consolidated_data)
+        # Aplicar las mismas transformaciones
+        X_clean = X.fillna(X.median())
+        X_enhanced = self._create_additional_features(X_clean)
         
-        results = {}
+        # Seleccionar solo las features que se usaron en el entrenamiento
+        X_selected = X_enhanced[self.selected_features]
         
-        for data_type, df in consolidated_data.items():
-            print(f"\n📊 Procesando {data_type.upper()}...")
-            
-            # Filtrar por cuentas objetivo si se especifica
-            if target_accounts and 'usuario' in df.columns:
-                df_filtered = df[df['usuario'].isin(target_accounts)].copy()
-                print(f"   • Filtrado por cuentas: {target_accounts}")
-                print(f"   • Registros: {len(df)} → {len(df_filtered)}")
+        # Escalar
+        X_scaled = self.scaler.transform(X_selected)
+        
+        return X_scaled
+    
+    def _clean_data(self, X, y):
+        """Limpia los datos removiendo outliers y valores problemáticos."""
+        # Combinar X y y para limpieza conjunta
+        data = X.copy()
+        data[TARGET_VARIABLE] = y
+        
+        # Remover filas con target nulo o negativo
+        data = data[data[TARGET_VARIABLE].notna()]
+        data = data[data[TARGET_VARIABLE] >= 0]
+        
+        # Remover outliers extremos en target (más de 3 desviaciones estándar)
+        target_mean = data[TARGET_VARIABLE].mean()
+        target_std = data[TARGET_VARIABLE].std()
+        outlier_threshold = 3
+        
+        data = data[
+            (data[TARGET_VARIABLE] >= target_mean - outlier_threshold * target_std) &
+            (data[TARGET_VARIABLE] <= target_mean + outlier_threshold * target_std)
+        ]
+        
+        # Separar X y y limpiados
+        y_clean = data[TARGET_VARIABLE]
+        X_clean = data.drop(columns=[TARGET_VARIABLE])
+        
+        # Rellenar valores faltantes en X
+        for col in X_clean.columns:
+            if X_clean[col].dtype in ['int64', 'float64']:
+                X_clean[col] = X_clean[col].fillna(X_clean[col].median())
             else:
-                df_filtered = df.copy()
+                X_clean[col] = X_clean[col].fillna(X_clean[col].mode()[0] if not X_clean[col].mode().empty else 0)
+        
+        return X_clean, y_clean
+    
+    def _create_additional_features(self, X):
+        """Crea features adicionales para mejorar el modelo."""
+        X_enhanced = X.copy()
+        
+        # Features de ratios
+        if 'likes' in X.columns and 'vistas' in X.columns:
+            X_enhanced['likes_per_view'] = X_enhanced['likes'] / (X_enhanced['vistas'] + 1)
+        
+        if 'retweets' in X.columns and 'likes' in X.columns:
+            X_enhanced['retweet_like_ratio'] = X_enhanced['retweets'] / (X_enhanced['likes'] + 1)
+        
+        if 'respuestas' in X.columns and 'total_interacciones' in X.columns:
+            X_enhanced['reply_interaction_ratio'] = X_enhanced['respuestas'] / (X_enhanced['total_interacciones'] + 1)
+        
+        # Features logarítmicas para variables con gran varianza
+        log_features = ['vistas', 'likes', 'total_interacciones']
+        for feature in log_features:
+            if feature in X.columns:
+                X_enhanced[f'log_{feature}'] = np.log1p(X_enhanced[feature])
+        
+        # Features cuadráticas para engagement
+        if 'engagement_rate' in X.columns:
+            X_enhanced['engagement_rate_squared'] = X_enhanced['engagement_rate'] ** 2
+        
+        # Features temporales mejoradas
+        if 'hora' in X.columns:
+            X_enhanced['es_hora_pico'] = X_enhanced['hora'].apply(lambda x: 1 if x in [12, 19, 20, 21] else 0)
+        
+        if 'dia_semana' in X.columns:
+            X_enhanced['es_fin_semana'] = X_enhanced['dia_semana'].apply(lambda x: 1 if x in [5, 6] else 0)
+        
+        return X_enhanced
+    
+    def _select_features(self, X, y, k=10):
+        """Selecciona las mejores features usando SelectKBest."""
+        # Ajustar k al número de features disponibles
+        k = min(k, len(X.columns))
+        
+        self.feature_selector = SelectKBest(f_regression, k=k)
+        X_selected = self.feature_selector.fit_transform(X, y)
+        
+        # Obtener nombres de features seleccionadas
+        selected_indices = self.feature_selector.get_support(indices=True)
+        self.selected_features = [X.columns[i] for i in selected_indices]
+        
+        return pd.DataFrame(X_selected, columns=self.selected_features, index=X.index)
+    
+    def _scale_features(self, X):
+        """Escala las features usando el método especificado."""
+        X_scaled = self.scaler.fit_transform(X)
+        return X_scaled
+    
+    def get_feature_importance_scores(self):
+        """
+        Obtiene los scores de importancia de features.
+        
+        Returns:
+            pd.DataFrame: Scores de importancia
+        """
+        if self.feature_selector is None:
+            return None
+        
+        scores = self.feature_selector.scores_
+        selected_indices = self.feature_selector.get_support(indices=True)
+        
+        importance_df = pd.DataFrame({
+            'feature': self.selected_features,
+            'score': scores[selected_indices]
+        }).sort_values('score', ascending=False)
+        
+        return importance_df
+    
+    def process_account_data(self, data: pd.DataFrame):
+        """
+        Procesa los datos de una cuenta específica.
+        
+        Args:
+            data (pd.DataFrame): Datos de la cuenta
             
-            if len(df_filtered) == 0:
-                print(f"   ⚠️ No hay datos para procesar en {data_type}")
-                continue
+        Returns:
+            Tuple[pd.DataFrame, List[str]]: Datos procesados y lista de features
+        """
+        print(f"   🔧 Procesando datos de {self.account_name or 'cuenta'}...")
+        
+        # Verificar que tenemos la variable objetivo
+        if self.target_variable not in data.columns:
+            available_cols = [col for col in data.columns if 'seguidores' in col.lower()]
+            if available_cols:
+                self.target_variable = available_cols[0]
+                print(f"   ⚠️  Usando '{self.target_variable}' como variable objetivo")
+            else:
+                raise ValueError(f"No se encontró variable objetivo '{self.target_variable}'")
+        
+        # Obtener features disponibles
+        feature_cols = []
+        for feature_group in FEATURE_CONFIG.values():
+            feature_cols.extend(feature_group)
+        
+        # Filtrar features que existen en los datos
+        available_features = [col for col in feature_cols if col in data.columns and col != self.target_variable]
+        
+        if not available_features:
+            raise ValueError("No se encontraron features válidas para el modelo")
+        
+        # Preparar X e y
+        X = data[available_features].fillna(0)
+        y = data[self.target_variable].fillna(0)
+        
+        # Aplicar preprocesamiento
+        X_processed = self.fit_transform(X, y)
+        
+        # Crear DataFrame procesado que incluye tanto features como target
+        processed_data = X_processed.copy()
+        processed_data[self.target_variable] = y.values
+        
+        feature_names = X_processed.columns.tolist()
+        
+        print(f"   ✅ Preprocesamiento completado: {len(feature_names)} features")
+        
+        return processed_data, feature_names
+
+class BatchPreprocessor:
+    """
+    Preprocesador para múltiples cuentas de forma consistente.
+    """
+    
+    def __init__(self, scaling_method='standard'):
+        """
+        Inicializa el preprocesador batch.
+        
+        Args:
+            scaling_method (str): Método de escalado
+        """
+        self.scaling_method = scaling_method
+        self.preprocessors = {}
+    
+    def process_multiple_accounts(self, accounts_data):
+        """
+        Procesa datos de múltiples cuentas.
+        
+        Args:
+            accounts_data (dict): Datos de múltiples cuentas
             
-            # Preprocesar datos
+        Returns:
+            dict: Datos procesados por cuenta
+        """
+        processed_data = {}
+        
+        print(f"🔄 Procesando {len(accounts_data)} cuentas...")
+        
+        for account, data in accounts_data.items():
             try:
-                X_scaled, data_enhanced, features, info = self.preprocess_data(df_filtered, data_type)
+                print(f"\n📊 Procesando cuenta: {account}")
                 
-                results[data_type] = {
-                    'X_scaled': X_scaled,
-                    'data_enhanced': data_enhanced,
+                # Extraer X y y
+                df = data['combined']
+                
+                feature_columns = [col for col in df.columns 
+                                 if col not in ['fecha_publicacion', 'contenido', TARGET_VARIABLE]]
+                
+                X = df[feature_columns]
+                y = df[TARGET_VARIABLE]
+                
+                # Crear preprocesador para esta cuenta
+                preprocessor = AccountPreprocessor(scaling_method=self.scaling_method)
+                
+                # Procesar
+                X_processed, features, info = preprocessor.fit_transform(X, y)
+                
+                # Guardar resultados
+                processed_data[account] = {
+                    'X': X_processed,
+                    'y': y.values,
                     'features': features,
+                    'preprocessor': preprocessor,
                     'info': info,
-                    'structure_info': structure_info
+                    'original_data': df
                 }
                 
-                print(f"   ✅ {data_type} procesado exitosamente")
+                print(f"   ✅ Procesado: {info['final_shape']} shape final")
                 
             except Exception as e:
-                print(f"   ❌ Error procesando {data_type}: {str(e)}")
-                results[data_type] = {'error': str(e)}
+                print(f"   ❌ Error procesando {account}: {e}")
+                continue
         
-        return results
-    
-    def get_feature_importance_data(self, data_enhanced: pd.DataFrame, features: List[str]) -> pd.DataFrame:
-        """
-        Prepara datos para análisis de importancia de features.
+        self.preprocessors = {account: data['preprocessor'] 
+                            for account, data in processed_data.items()}
         
-        Args:
-            data_enhanced (pd.DataFrame): DataFrame con features engineered
-            features (List[str]): Lista de features
-            
-        Returns:
-            pd.DataFrame: DataFrame listo para análisis de importancia
-        """
-        return data_enhanced[features].copy()
+        return processed_data
 
-def preprocess_twitter_data(data: pd.DataFrame, 
-                           features_base: List[str] = None) -> Tuple[np.ndarray, pd.DataFrame, List[str], Dict]:
+# =============================================================================
+# FUNCIONES DE UTILIDAD
+# =============================================================================
+
+def preprocess_account_data(X, y, account_name="unknown", scaling_method='standard'):
     """
-    Función principal para preprocesar datos de Twitter (compatibilidad hacia atrás).
+    Función simple para preprocesar datos de una cuenta.
     
     Args:
-        data (pd.DataFrame): DataFrame original
-        features_base (List[str]): Features base (opcional)
+        X (pd.DataFrame): Features
+        y (pd.Series): Target
+        account_name (str): Nombre de la cuenta
+        scaling_method (str): Método de escalado
         
     Returns:
-        Tuple: X_scaled, data_enhanced, features, info_completa
+        dict: Datos procesados
     """
-    preprocessor = MultiAccountDataPreprocessor(features_base=features_base)
-    return preprocessor.preprocess_data(data)
+    print(f"🔧 Preprocesando datos para {account_name}...")
+    
+    preprocessor = AccountPreprocessor(scaling_method=scaling_method)
+    X_processed, features, info = preprocessor.fit_transform(X, y)
+    
+    return {
+        'X': X_processed,
+        'y': y.values,
+        'features': features,
+        'preprocessor': preprocessor,
+        'info': info
+    }
+
+def get_preprocessing_summary(preprocessing_info):
+    """
+    Genera un resumen del preprocesamiento.
+    
+    Args:
+        preprocessing_info (dict): Información del preprocesamiento
+        
+    Returns:
+        str: Resumen formateado
+    """
+    info = preprocessing_info
+    
+    summary = f"""
+📋 RESUMEN DE PREPROCESAMIENTO
+{'=' * 40}
+📊 Shape original: {info['original_shape']}
+🎯 Shape final: {info['final_shape']}
+🗑️  Muestras removidas: {info['samples_removed']}
+🔧 Features removidas: {len(info['features_removed'])}
+📏 Método de escalado: {info['scaling_method']}
+    """
+    
+    if info['features_removed']:
+        summary += f"\n🚫 Features eliminadas: {list(info['features_removed'])[:5]}..."
+    
+    return summary
+
+# =============================================================================
+# EJEMPLO DE USO
+# =============================================================================
 
 if __name__ == "__main__":
-    # Ejemplo de uso para testing
-    import sys
-    sys.path.append('.')
-    from data_loader import MultiAccountDataLoader
+    print("🧪 Probando preprocesamiento...")
     
-    # Cargar datos de ejemplo
-    loader = MultiAccountDataLoader()
+    # Crear datos de prueba
+    np.random.seed(42)
+    n_samples = 100
     
-    # Ejemplo 1: Cargar datos consolidados
-    print("🧪 EJEMPLO 1: Datos consolidados")
-    consolidated_data = loader.load_consolidated_data(mode='consolidado')
+    test_data = pd.DataFrame({
+        'likes': np.random.poisson(50, n_samples),
+        'retweets': np.random.poisson(10, n_samples),
+        'vistas': np.random.poisson(1000, n_samples),
+        'engagement_rate': np.random.normal(0.05, 0.02, n_samples),
+        'hora': np.random.randint(0, 24, n_samples),
+        'dia_semana': np.random.randint(0, 7, n_samples)
+    })
     
-    if consolidated_data:
-        preprocessor = MultiAccountDataPreprocessor()
-        results = preprocessor.preprocess_multi_account_data(consolidated_data)
-        
-        print(f"\n✅ Resultados obtenidos para {len(results)} tipos de datos")
-        for data_type, result in results.items():
-            if 'error' not in result:
-                print(f"   • {data_type}: {result['X_scaled'].shape}")
+    test_target = np.random.normal(10000, 2000, n_samples)
+    test_target = np.maximum(test_target, 0)  # Asegurar valores positivos
     
-    # Ejemplo 2: Datos individuales (compatibilidad)
-    print("\n🧪 EJEMPLO 2: Compatibilidad con datos individuales")
-    try:
-        from data_loader import load_and_prepare_data
-        data, _ = load_and_prepare_data()
-        X_scaled, data_enhanced, features, info = preprocess_twitter_data(data)
-        print(f"✅ Preprocesamiento compatible completado. Shape: {X_scaled.shape}")
-    except Exception as e:
-        print(f"⚠️ Error en compatibilidad: {e}")
-        print("   (Esto es esperado si no hay datos legacy disponibles)")
+    # Probar preprocesamiento
+    result = preprocess_account_data(test_data, test_target, "test_account")
+    
+    print(f"✅ Preprocesamiento completado")
+    print(f"📊 Shape procesada: {result['X'].shape}")
+    print(f"🎯 Features seleccionadas: {len(result['features'])}")
+    print(f"📋 Features: {result['features'][:5]}...")
+    
+    # Mostrar resumen
+    print(get_preprocessing_summary(result['info']))

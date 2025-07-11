@@ -1,112 +1,90 @@
 # =============================================================================
-# PAQUETE SCRIPTS - TWITTRACK ANALYSIS
+# PAQUETE SCRIPTS - MODELOS DE REGRESIÓN POR CUENTA INDIVIDUAL
 # =============================================================================
 
 """
-Paquete de scripts para análisis de Machine Learning en datos de Twitter.
+Paquete especializado para modelos de regresión por cuenta individual de Twitter/X.
 
-Este paquete contiene todos los módulos necesarios para realizar un análisis
-completo de datos de engagement en Twitter, incluyendo:
+Versión 3.0 - Enfoque en predicción de seguidores usando base DuckDB.
 
-- Carga y preprocesamiento de datos
-- Análisis de clustering (K-Means, DBSCAN)
-- Modelos de regresión (8 algoritmos)
-- Visualizaciones profesionales
-- Pipeline integrado
+MÓDULOS PRINCIPALES:
+- config: Configuración de regresión y conexión a base de datos
+- data_loader: Carga de datos desde DuckDB por cuenta
+- preprocessing: Preprocesamiento para regresión
+- regression_models: Modelos ML especializados en seguidores
+- run_individual: Script principal para análisis por cuenta
 
-Módulos disponibles:
-    - config: Configuración y constantes del proyecto
-    - data_loader: Carga y consolidación de datos
-    - preprocessing: Preprocesamiento y feature engineering
-    - clustering: Análisis de clustering
-    - regression_models: Modelos de regresión
-    - visualization: Visualizaciones y gráficos
-    - main_pipeline: Pipeline principal integrado
-
-Uso rápido:
-    >>> from scripts.main_pipeline import run_twitter_analysis
-    >>> resultados = run_twitter_analysis(usuario_objetivo='interbank')
-
-Versión: 1.0
-Autor: Proyecto TwitTrack
-Fecha: 2025
+CARACTERÍSTICAS:
+- Análisis individual por cuenta
+- Variable objetivo: número de seguidores
+- 8 algoritmos de machine learning
+- Guardado automático de modelos y reportes
+- CLI completa con validaciones
 """
 
-# Información del paquete
-__version__ = "1.0.0"
-__author__ = "Proyecto TwitTrack"
-__email__ = "twittrack@proyecto.edu"
-__description__ = "Scripts de análisis de Machine Learning para datos de Twitter"
+__version__ = "3.0.0"
+__author__ = "Social Media Analytics Team"
+__description__ = "Individual account regression models for follower prediction"
 
-# Importaciones principales para acceso rápido
-from .config import PROJECT_CONFIG, MODELS_CONFIG, CONFIG_INFO
-from .main_pipeline import run_twitter_analysis, TwitterAnalysisPipeline
-
-# Importaciones opcionales para uso avanzado
+# Imports principales
 try:
-    from .data_loader import load_and_prepare_data, DataLoader
-    from .preprocessing import preprocess_twitter_data, DataPreprocessor
-    from .clustering import perform_clustering_analysis, ClusteringAnalyzer
-    from .regression_models import train_regression_models, RegressionAnalyzer
-    from .visualization import create_comprehensive_visualizations, VisualizationManager
+    from .config import (REGRESSION_MODELS, TARGET_VARIABLE, FEATURE_CONFIG, 
+                        OUTPUT_CONFIG, PROJECT_INFO, print_project_info,
+                        verify_database, get_available_accounts)
+    
+    from .data_loader import AccountDataLoader, MultiAccountLoader
+    from .preprocessing import AccountPreprocessor, BatchPreprocessor
+    from .regression_models import AccountRegressionModel, train_account_regression_model
+    
+    # Variables disponibles
+    __all__ = [
+        'REGRESSION_MODELS', 'TARGET_VARIABLE', 'FEATURE_CONFIG', 'OUTPUT_CONFIG',
+        'PROJECT_INFO', 'print_project_info', 'verify_database', 'get_available_accounts',
+        'AccountDataLoader', 'MultiAccountLoader',
+        'AccountPreprocessor', 'BatchPreprocessor', 
+        'AccountRegressionModel', 'train_account_regression_model'
+    ]
+    
+    _imports_successful = True
+    
 except ImportError as e:
-    print(f"⚠️ Advertencia: Algunas dependencias no están disponibles: {e}")
-
-# Lista de módulos exportados
-__all__ = [
-    # Principales
-    'run_twitter_analysis',
-    'TwitterAnalysisPipeline',
-    'PROJECT_CONFIG',
-    'MODELS_CONFIG',
-    
-    # Avanzados
-    'load_and_prepare_data',
-    'preprocess_twitter_data', 
-    'perform_clustering_analysis',
-    'train_regression_models',
-    'create_comprehensive_visualizations',
-    
-    # Clases
-    'DataLoader',
-    'DataPreprocessor', 
-    'ClusteringAnalyzer',
-    'RegressionAnalyzer',
-    'VisualizationManager'
-]
+    print(f"⚠️  Advertencia: Error importando módulos: {e}")
+    _imports_successful = False
+    __all__ = []
 
 def get_package_info():
     """
-    Retorna información del paquete.
+    Devuelve información del paquete.
     
     Returns:
         dict: Información del paquete
     """
     return {
+        'name': 'scripts',
         'version': __version__,
-        'author': __author__,
         'description': __description__,
-        'modules': __all__,
-        'config_loaded': bool(PROJECT_CONFIG),
-        'dependencies_ok': True  # Se podría verificar dinámicamente
+        'modules': __all__ if _imports_successful else [],
+        'status': 'OK' if _imports_successful else 'Import Error'
     }
 
-def quick_analysis(usuario='interbank', target='likes'):
-    """
-    Función de conveniencia para análisis rápido.
+def print_package_info():
+    """Imprime información del paquete."""
+    info = get_package_info()
+    print(f"\n📦 Paquete: {info['name']} v{info['version']}")
+    print(f"📝 Descripción: {info['description']}")
+    print(f"📊 Estado: {info['status']}")
+    print(f"🔧 Módulos: {len(info['modules'])}")
     
-    Args:
-        usuario (str): Usuario objetivo
-        target (str): Variable objetivo
-        
-    Returns:
-        dict: Resultados del análisis
-    """
-    print(f"🚀 Iniciando análisis rápido para {usuario} prediciendo {target}")
-    return run_twitter_analysis(usuario_objetivo=usuario, target_variable=target)
+    if info['modules']:
+        print("📋 Módulos disponibles:")
+        for module in info['modules'][:10]:  # Mostrar solo los primeros 10
+            print(f"   • {module}")
+        if len(info['modules']) > 10:
+            print(f"   ... y {len(info['modules']) - 10} más")
 
-# Mensaje de bienvenida al importar el paquete
-print("📦 Paquete TwitTrack Scripts cargado exitosamente")
-print(f"   Versión: {__version__}")
-print(f"   Módulos disponibles: {len(__all__)}")
-print(f"   Uso rápido: run_twitter_analysis()")
+if __name__ == "__main__":
+    print_package_info()
+    if _imports_successful:
+        print_project_info()
+    else:
+        print("❌ Algunos módulos no se pudieron importar")

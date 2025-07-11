@@ -1,86 +1,181 @@
 # =============================================================================
-# MODELOS DE REGRESIÓN
+# MODELOS DE REGRESIÓN PARA PREDICCIÓN DE SEGUIDORES
 # =============================================================================
 
 """
-Módulo para implementación y evaluación de modelos de regresión.
-Incluye 8 algoritmos de ML con evaluación comparativa completa.
+Módulo para implementación y evaluación de modelos de regresión por cuenta individual.
+Enfoque: Predicción del número de seguidores usando métricas de engagement.
 """
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import joblib
+from datetime import datetime
+from pathlib import Path
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import (mean_squared_error, r2_score, mean_absolute_error, 
                            median_absolute_error, explained_variance_score)
 from typing import Tuple, Dict, List, Optional, Any
-from config import MODELS_CONFIG, PROJECT_CONFIG, SCORING_CONFIG
+from .config import (REGRESSION_MODELS, TARGET_VARIABLE, FEATURE_CONFIG, 
+                    EVALUATION_METRICS, OUTPUT_CONFIG)
 
-class RegressionAnalyzer:
+class AccountRegressionModel:
     """
-    Clase para análisis completo de modelos de regresión en datos de Twitter.
+    Clase para crear modelos de regresión específicos por cuenta de Twitter/X.
+    Enfoque: Predicción del número de seguidores basado en métricas de engagement.
     """
     
-    def __init__(self, target_variable: str = None, config: Dict = None):
+    def __init__(self, account_name: str, target_variable: str = None):
         """
-        Inicializa el analizador de regresión.
+        Inicializa el modelo de regresión para una cuenta específica.
         
         Args:
-            target_variable (str): Variable objetivo
-            config (Dict): Configuración de modelos
+            account_name (str): Nombre de la cuenta
+            target_variable (str): Variable objetivo (por defecto: seguidores)
         """
-        self.target_variable = target_variable or PROJECT_CONFIG['default_target_variable']
-        self.config = config or MODELS_CONFIG['regression']
+        self.account_name = account_name
+        self.target_variable = target_variable or TARGET_VARIABLE
         self.models = {}
-        self.results = []
+        self.results = {}
+        self.best_model = None
         self.X_train = None
         self.X_test = None
         self.y_train = None
         self.y_test = None
+        self.feature_names = None
+        self.scaler = None
         
     def setup_models(self) -> Dict:
         """
-        Configura los modelos de regresión.
+        Configura los modelos de regresión basados en la configuración.
         
         Returns:
             Dict: Diccionario con modelos configurados
         """
-        print("🤖 Configurando modelos de regresión...")
+        print(f"🤖 Configurando modelos para cuenta: {self.account_name}")
         
-        self.models = self.config['models'].copy()
+        self.models = {}
+        for name, config in REGRESSION_MODELS.items():
+            model_class = config['model']
+            params = config['params']
+            self.models[name] = model_class(**params)
         
         print(f"   • Modelos configurados: {len(self.models)}")
-        for nombre in self.models.keys():
-            print(f"     - {nombre}")
+        for name, config in REGRESSION_MODELS.items():
+            print(f"     - {config['description']}")
+        
+        return self.models
+# =============================================================================
+# MODELOS DE REGRESIÓN PARA PREDICCIÓN DE SEGUIDORES
+# =============================================================================
+
+"""
+Módulo para implementación y evaluación de modelos de regresión por cuenta individual.
+Enfoque: Predicción del número de seguidores usando métricas de engagement.
+"""
+
+import numpy as np
+import pandas as pd
+import joblib
+from datetime import datetime
+from pathlib import Path
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import (mean_squared_error, r2_score, mean_absolute_error, 
+                           median_absolute_error, explained_variance_score)
+from typing import Tuple, Dict, List, Optional, Any
+from .config import (REGRESSION_MODELS, TARGET_VARIABLE, FEATURE_CONFIG, 
+                    EVALUATION_METRICS, OUTPUT_CONFIG)
+
+class AccountRegressionModel:
+    """
+    Clase para crear modelos de regresión específicos por cuenta de Twitter/X.
+    Enfoque: Predicción del número de seguidores basado en métricas de engagement.
+    """
+    
+    def __init__(self, account_name: str, target_variable: str = None):
+        """
+        Inicializa el modelo de regresión para una cuenta específica.
+        
+        Args:
+            account_name (str): Nombre de la cuenta
+            target_variable (str): Variable objetivo (por defecto: seguidores)
+        """
+        self.account_name = account_name
+        self.target_variable = target_variable or TARGET_VARIABLE
+        self.models = {}
+        self.results = {}
+        self.best_model = None
+        self.trained_models = {}
+        self.X_train = None
+        self.X_test = None
+        self.y_train = None
+        self.y_test = None
+        self.feature_names = None
+        
+        # Configuración por defecto
+        self.config = {
+            'test_size': 0.2,
+            'random_state': 42,
+            'cv_folds': 5
+        }
+        
+    def setup_models(self) -> Dict:
+        """
+        Configura los modelos de regresión basados en la configuración.
+        
+        Returns:
+            Dict: Diccionario con modelos configurados
+        """
+        print(f"🤖 Configurando modelos para cuenta: {self.account_name}")
+        
+        self.models = {}
+        for name, config in REGRESSION_MODELS.items():
+            model_class = config['model']
+            params = config['params']
+            self.models[name] = model_class(**params)
+        
+        print(f"   • Modelos configurados: {len(self.models)}")
+        for name, config in REGRESSION_MODELS.items():
+            print(f"     - {config['description']}")
         
         return self.models
     
-    def prepare_regression_data(self, data: pd.DataFrame, features: List[str]) -> Tuple[pd.DataFrame, pd.Series, Dict]:
+    def prepare_data(self, data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
         """
         Prepara los datos para regresión.
         
         Args:
-            data (pd.DataFrame): DataFrame con todas las features
-            features (List[str]): Lista de features disponibles
+            data (pd.DataFrame): DataFrame con datos de la cuenta
             
         Returns:
-            Tuple[pd.DataFrame, pd.Series, Dict]: X, y, statistics
+            Tuple[pd.DataFrame, pd.Series]: X (features), y (target)
         """
-        print(f"🎯 Variable objetivo seleccionada: {self.target_variable}")
+        print(f"📊 Preparando datos para regresión de {self.account_name}")
+        print(f"🎯 Variable objetivo: {self.target_variable}")
         
-        # Validar que la variable objetivo existe
+        # Verificar que la variable objetivo existe
         if self.target_variable not in data.columns:
-            available_targets = [col for col in ['likes', 'retweets', 'respuestas', 'vistas', 'guardados'] 
-                               if col in data.columns]
+            available_cols = data.columns.tolist()
             raise ValueError(f"Variable objetivo '{self.target_variable}' no encontrada. "
-                           f"Disponibles: {available_targets}")
+                           f"Columnas disponibles: {available_cols}")
         
-        print(f"\n📊 Preparando datos para regresión...")
+        # Obtener todas las features disponibles excluyendo la variable objetivo
+        all_features = []
+        for feature_group in FEATURE_CONFIG.values():
+            all_features.extend(feature_group)
         
-        # Variables predictoras (excluir la variable objetivo de los features)
-        features_regresion = [col for col in features if col != self.target_variable]
-        X_reg = data[features_regresion].fillna(0)
+        # Filtrar features que existen en los datos
+        available_features = [col for col in all_features if col in data.columns and col != self.target_variable]
+        
+        if not available_features:
+            raise ValueError("No se encontraron features válidas para el modelo")
+        
+        # Preparar X e y
+        X = data[available_features].fillna(0)
         y = data[self.target_variable].fillna(0)
+        
+        # Guardar nombres de features
+        self.feature_names = available_features
         
         # Estadísticas de la variable objetivo
         y_stats = {
@@ -89,95 +184,87 @@ class RegressionAnalyzer:
             'median': y.median(),
             'std': y.std(),
             'min': y.min(),
-            'max': y.max(),
-            'skewness': y.skew(),
-            'kurtosis': y.kurtosis()
+            'max': y.max()
         }
         
-        print(f"   • Features para regresión: {len(features_regresion)}")
-        print(f"   • Features utilizadas: {features_regresion}")
+        print(f"   • Features utilizadas: {len(available_features)}")
         print(f"   • Muestras totales: {len(y):,}")
-        print(f"   • Estadísticas de variable objetivo:")
+        print(f"   • Estadísticas de {self.target_variable}:")
         for key, value in y_stats.items():
             if isinstance(value, (int, float)):
                 print(f"     - {key.title()}: {value:.2f}")
-            else:
-                print(f"     - {key.title()}: {value}")
         
-        return X_reg, y, y_stats
+        return X, y
     
-    def split_data(self, X: pd.DataFrame, y: pd.Series, 
-                  test_size: float = None, random_state: int = None) -> None:
+    def split_data(self, X: pd.DataFrame, y: pd.Series) -> None:
         """
         Divide los datos en entrenamiento y prueba.
         
         Args:
             X (pd.DataFrame): Features
             y (pd.Series): Variable objetivo
-            test_size (float): Proporción para test
-            random_state (int): Semilla aleatoria
         """
-        test_size = test_size or PROJECT_CONFIG['test_size']
-        random_state = random_state or PROJECT_CONFIG['random_state']
-        
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state, stratify=None
+            X, y, 
+            test_size=self.config['test_size'], 
+            random_state=self.config['random_state']
         )
         
         print(f"   • Datos de entrenamiento: {self.X_train.shape[0]:,} muestras")
         print(f"   • Datos de prueba: {self.X_test.shape[0]:,} muestras")
     
-    def train_and_evaluate_models(self) -> List[Dict]:
+    def train_and_evaluate_models(self) -> pd.DataFrame:
         """
         Entrena y evalúa todos los modelos de regresión.
         
         Returns:
-            List[Dict]: Lista con resultados de todos los modelos
+            pd.DataFrame: DataFrame con resultados de todos los modelos
         """
         if not self.models:
             self.setup_models()
         
         if self.X_train is None:
-            raise ValueError("Datos no preparados. Ejecuta split_data() primero.")
+            raise ValueError("Datos no preparados. Ejecuta prepare_data() y split_data() primero.")
         
-        print(f"\n⚡ Entrenando y evaluando modelos...")
+        print(f"\n⚡ Entrenando y evaluando modelos para {self.account_name}...")
         
         resultados = []
         
         for nombre, modelo in self.models.items():
-            print(f"   🔄 Procesando {nombre}...")
+            print(f"   🔄 Procesando {REGRESSION_MODELS[nombre]['description']}...")
             
             try:
                 # Entrenamiento
                 modelo.fit(self.X_train, self.y_train)
                 
+                # Guardar modelo entrenado
+                self.trained_models[nombre] = modelo
+                
                 # Predicción
                 y_pred = modelo.predict(self.X_test)
                 
-                # Limpieza de datos (manejar NaN y valores infinitos)
-                mask = np.isfinite(y_pred) & np.isfinite(self.y_test) & ~pd.isna(self.y_test)
-                y_test_clean = self.y_test[mask]
-                y_pred_clean = y_pred[mask]
+                # Calcular métricas
+                metrics = self._calculate_metrics(self.y_test, y_pred, modelo)
                 
-                # Calcular métricas solo si hay datos válidos
-                if len(y_test_clean) > 0:
-                    metrics = self._calculate_metrics(y_test_clean, y_pred_clean, modelo)
-                    
-                    resultados.append({
-                        'Modelo': nombre,
-                        **metrics,
-                        'Muestras_válidas': len(y_test_clean)
-                    })
-                    
-                    print(f"      ✅ Completado - R²: {metrics['R²']:.3f}, RMSE: {metrics['RMSE']:.2f}")
-                else:
-                    print(f"      ❌ Sin datos válidos para evaluación")
-                    
+                resultados.append({
+                    'Modelo': REGRESSION_MODELS[nombre]['description'],
+                    'Modelo_ID': nombre,
+                    **metrics
+                })
+                
+                print(f"      ✅ Completado - R²: {metrics['R²']:.3f}, RMSE: {metrics['RMSE']:.2f}")
+                
             except Exception as e:
                 print(f"      ❌ Error en {nombre}: {str(e)}")
         
-        self.results = resultados
-        return resultados
+        # Crear DataFrame de resultados
+        results_df = pd.DataFrame(resultados)
+        if len(results_df) > 0:
+            results_df = results_df.sort_values(['R²'], ascending=[False])
+            results_df = results_df.reset_index(drop=True)
+        
+        self.results = results_df
+        return results_df
     
     def _calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, modelo: Any) -> Dict:
         """
@@ -198,17 +285,22 @@ class RegressionAnalyzer:
         r2 = r2_score(y_true, y_pred)
         evs = explained_variance_score(y_true, y_pred)
         
-        # Validación cruzada para mayor robustez
-        cv_folds = PROJECT_CONFIG['cv_folds']
-        cv_scores = cross_val_score(modelo, self.X_train, self.y_train, 
-                                  cv=cv_folds, scoring='r2', n_jobs=-1)
-        cv_mean = cv_scores.mean()
-        cv_std = cv_scores.std()
+        # Validación cruzada
+        try:
+            cv_scores = cross_val_score(
+                modelo, self.X_train, self.y_train, 
+                cv=self.config['cv_folds'], 
+                scoring='r2', 
+                n_jobs=-1
+            )
+            cv_mean = cv_scores.mean()
+            cv_std = cv_scores.std()
+        except:
+            cv_mean = r2
+            cv_std = 0.0
         
         # Métricas adicionales
-        mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-8))) * 100  # MAPE with small epsilon
-        residuals = y_true - y_pred
-        residuals_std = np.std(residuals)
+        mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-8))) * 100
         
         return {
             'RMSE': rmse,
@@ -218,248 +310,175 @@ class RegressionAnalyzer:
             'EVS': evs,
             'CV_R²_mean': cv_mean,
             'CV_R²_std': cv_std,
-            'MAPE': mape,
-            'Residuals_Std': residuals_std
+            'MAPE': mape
         }
     
-    def create_results_dataframe(self, resultados: List[Dict]) -> pd.DataFrame:
+    def get_best_model(self) -> Dict:
         """
-        Crea DataFrame con los resultados ordenados.
+        Identifica el mejor modelo basado en R².
+        
+        Returns:
+            Dict: Información del mejor modelo
+        """
+        if len(self.results) == 0:
+            return {}
+        
+        best_row = self.results.loc[self.results['R²'].idxmax()]
+        self.best_model = best_row['Modelo_ID']
+        
+        return {
+            'model_id': best_row['Modelo_ID'],
+            'model_name': best_row['Modelo'],
+            'r2_score': best_row['R²'],
+            'rmse': best_row['RMSE'],
+            'mae': best_row['MAE'],
+            'cv_r2': best_row['CV_R²_mean']
+        }
+    
+    def save_model(self, model_id: str = None, save_path: str = None) -> str:
+        """
+        Guarda el modelo entrenado.
         
         Args:
-            resultados (List[Dict]): Lista de resultados
+            model_id (str): ID del modelo a guardar (por defecto: mejor modelo)
+            save_path (str): Ruta donde guardar (por defecto: directorio de modelos)
             
         Returns:
-            pd.DataFrame: DataFrame ordenado por rendimiento
+            str: Ruta del archivo guardado
         """
-        if not resultados:
-            return pd.DataFrame()
+        # Usar mejor modelo si no se especifica
+        if model_id is None:
+            if self.best_model is None:
+                self.get_best_model()
+            model_id = self.best_model
         
-        resultados_df = pd.DataFrame(resultados)
+        if model_id not in self.trained_models:
+            raise ValueError(f"Modelo '{model_id}' no está entrenado")
         
-        # Ordenar por RMSE (ascendente) y luego por R² (descendente)
-        resultados_df = resultados_df.sort_values(['RMSE', 'R²'], ascending=[True, False])
-        resultados_df = resultados_df.reset_index(drop=True)
+        # Crear directorio si no existe
+        if save_path is None:
+            save_dir = Path(OUTPUT_CONFIG['models_dir'])
+            save_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_path = save_dir / f"{self.account_name}_{model_id}_{timestamp}.pkl"
         
-        return resultados_df
+        # Guardar modelo
+        model_data = {
+            'model': self.trained_models[model_id],
+            'feature_names': self.feature_names,
+            'target_variable': self.target_variable,
+            'account_name': self.account_name,
+            'model_id': model_id,
+            'timestamp': datetime.now(),
+            'results': self.results.to_dict('records') if len(self.results) > 0 else []
+        }
+        
+        joblib.dump(model_data, save_path)
+        print(f"💾 Modelo guardado: {save_path}")
+        
+        return str(save_path)
     
-    def print_results_summary(self, resultados_df: pd.DataFrame) -> None:
+    def generate_report(self) -> Dict:
+        """
+        Genera un reporte completo del análisis.
+        
+        Returns:
+            Dict: Reporte completo
+        """
+        if len(self.results) == 0:
+            return {}
+        
+        best_model_info = self.get_best_model()
+        
+        report = {
+            'account_name': self.account_name,
+            'target_variable': self.target_variable,
+            'total_models': len(self.results),
+            'best_model': best_model_info,
+            'all_results': self.results.to_dict('records'),
+            'feature_count': len(self.feature_names) if self.feature_names else 0,
+            'features_used': self.feature_names,
+            'training_samples': len(self.X_train) if self.X_train is not None else 0,
+            'test_samples': len(self.X_test) if self.X_test is not None else 0,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return report
+    
+    def print_results_summary(self) -> None:
         """
         Imprime resumen de resultados.
-        
-        Args:
-            resultados_df (pd.DataFrame): DataFrame con resultados
         """
-        if len(resultados_df) == 0:
-            print(f"\n❌ No se pudieron entrenar modelos exitosamente")
+        if len(self.results) == 0:
+            print(f"\n❌ No se pudieron entrenar modelos para {self.account_name}")
             return
         
         print(f"\n" + "="*100)
-        print(f"📊 RESULTADOS DE REGRESIÓN - Variable objetivo: {self.target_variable.upper()}")
+        print(f"📊 RESULTADOS DE REGRESIÓN - {self.account_name.upper()}")
+        print(f"🎯 Variable objetivo: {self.target_variable}")
         print("="*100)
         
-        # Mostrar resultados formateados
-        display_cols = ['Modelo', 'RMSE', 'MAE', 'MedAE', 'R²', 'EVS', 'CV_R²_mean']
-        available_cols = [col for col in display_cols if col in resultados_df.columns]
-        print(resultados_df[available_cols].round(3).to_string(index=False))
+        # Mostrar resultados principales
+        display_cols = ['Modelo', 'R²', 'RMSE', 'MAE', 'CV_R²_mean']
+        available_cols = [col for col in display_cols if col in self.results.columns]
+        print(self.results[available_cols].round(3).to_string(index=False))
         
-        print(f"\n✅ Entrenamiento completado: {len(resultados_df)} modelos evaluados")
-    
-    def find_best_models(self, resultados_df: pd.DataFrame) -> Dict:
-        """
-        Identifica los mejores modelos por cada métrica.
+        # Mejor modelo
+        best_model_info = self.get_best_model()
+        if best_model_info:
+            print(f"\n🏆 MEJOR MODELO: {best_model_info['model_name']}")
+            print(f"   • R²: {best_model_info['r2_score']:.3f}")
+            print(f"   • RMSE: {best_model_info['rmse']:.2f}")
+            print(f"   • MAE: {best_model_info['mae']:.2f}")
+            print(f"   • CV R²: {best_model_info['cv_r2']:.3f}")
         
-        Args:
-            resultados_df (pd.DataFrame): DataFrame con resultados
-            
-        Returns:
-            Dict: Mejores modelos por métrica
-        """
-        if len(resultados_df) == 0:
-            return {}
-        
-        mejor_rmse = resultados_df.loc[resultados_df['RMSE'].idxmin()]
-        mejor_r2 = resultados_df.loc[resultados_df['R²'].idxmax()]
-        mejor_mae = resultados_df.loc[resultados_df['MAE'].idxmin()]
-        mejor_cv = resultados_df.loc[resultados_df['CV_R²_mean'].idxmax()]
-        
-        best_models = {
-            'rmse': mejor_rmse,
-            'r2': mejor_r2,
-            'mae': mejor_mae,
-            'cv': mejor_cv
-        }
-        
-        print(f"\n🏆 MEJORES MODELOS POR MÉTRICA:")
-        print(f"   🎯 Menor RMSE: {mejor_rmse['Modelo']} ({mejor_rmse['RMSE']:.3f})")
-        print(f"   📈 Mayor R²: {mejor_r2['Modelo']} ({mejor_r2['R²']:.3f})")
-        print(f"   📉 Menor MAE: {mejor_mae['Modelo']} ({mejor_mae['MAE']:.3f})")
-        print(f"   🔄 Mejor CV R²: {mejor_cv['Modelo']} ({mejor_cv['CV_R²_mean']:.3f} ± {mejor_cv['CV_R²_std']:.3f})")
-        
-        return best_models
-    
-    def generate_model_recommendation(self, resultados_df: pd.DataFrame) -> Dict:
-        """
-        Genera recomendación automática de modelo.
-        
-        Args:
-            resultados_df (pd.DataFrame): DataFrame con resultados
-            
-        Returns:
-            Dict: Recomendación y justificación
-        """
-        if len(resultados_df) == 0:
-            return {}
-        
-        # Sistema de puntuación múltiple usando configuración
-        scoring_weights = SCORING_CONFIG['weights']
-        score_weights = SCORING_CONFIG['score_weights']
-        
-        # Normalizar métricas y calcular score compuesto
-        resultados_norm = resultados_df.copy()
-        for metric in scoring_weights.keys():
-            if metric in resultados_df.columns:
-                if scoring_weights[metric] == 1:  # Mayor es mejor
-                    min_val = resultados_df[metric].min()
-                    max_val = resultados_df[metric].max()
-                    if max_val > min_val:
-                        resultados_norm[f'{metric}_norm'] = (resultados_df[metric] - min_val) / (max_val - min_val)
-                    else:
-                        resultados_norm[f'{metric}_norm'] = 1.0
-                else:  # Menor es mejor
-                    min_val = resultados_df[metric].min()
-                    max_val = resultados_df[metric].max()
-                    if max_val > min_val:
-                        resultados_norm[f'{metric}_norm'] = (max_val - resultados_df[metric]) / (max_val - min_val)
-                    else:
-                        resultados_norm[f'{metric}_norm'] = 1.0
-        
-        # Score compuesto
-        score_cols = [col for col in score_weights.keys() if col in resultados_norm.columns]
-        if score_cols:
-            resultados_norm['Score_Compuesto'] = sum(
-                resultados_norm[col] * score_weights[col] for col in score_cols
-            )
-        else:
-            # Fallback simple si no hay columnas de score
-            resultados_norm['Score_Compuesto'] = resultados_norm['R²']
-        
-        mejor_modelo_idx = resultados_norm['Score_Compuesto'].idxmax()
-        mejor_modelo = resultados_norm.loc[mejor_modelo_idx]
-        
-        recommendation = {
-            'modelo': mejor_modelo['Modelo'],
-            'metrics': {
-                'RMSE': mejor_modelo['RMSE'],
-                'R²': mejor_modelo['R²'],
-                'MAE': mejor_modelo['MAE'],
-                'CV_R²_mean': mejor_modelo['CV_R²_mean'],
-                'CV_R²_std': mejor_modelo['CV_R²_std']
-            },
-            'score_compuesto': mejor_modelo['Score_Compuesto']
-        }
-        
-        # Generar justificación
-        justificacion = self._generate_justification(recommendation, mejor_modelo)
-        recommendation['justificacion'] = justificacion
-        
-        return recommendation
-    
-    def _generate_justification(self, recommendation: Dict, modelo_info: pd.Series) -> str:
-        """
-        Genera justificación detallada del modelo recomendado.
-        
-        Args:
-            recommendation (Dict): Información de recomendación
-            modelo_info (pd.Series): Información del modelo
-            
-        Returns:
-            str: Justificación detallada
-        """
-        rmse = modelo_info['RMSE']
-        r2 = modelo_info['R²']
-        mae = modelo_info['MAE']
-        cv_mean = modelo_info['CV_R²_mean']
-        cv_std = modelo_info['CV_R²_std']
-        nombre = modelo_info['Modelo']
-        
-        justificacion = f"""
-El modelo {nombre} es recomendado por las siguientes razones:
+        print(f"\n✅ Análisis completado para {self.account_name}")
 
-🔹 PRECISIÓN: RMSE de {rmse:.3f} indica un error promedio de {rmse:.1f} unidades en la predicción de {self.target_variable}.
-
-🔹 EXPLICACIÓN: R² de {r2:.3f} significa que el modelo explica {r2*100:.1f}% de la variabilidad en {self.target_variable}.
-
-🔹 ROBUSTEZ: Error absoluto medio (MAE) de {mae:.3f} muestra consistencia en las predicciones.
-
-🔹 ESTABILIDAD: Validación cruzada R² de {cv_mean:.3f} ± {cv_std:.3f} indica {"alta" if cv_std < 0.05 else "moderada"} estabilidad.
-
-🔹 INTERPRETACIÓN: {"Alta interpretabilidad" if nombre in ["Linear Regression", "Decision Tree", "Ridge", "Lasso"] else "Modelo de caja negra con alta capacidad predictiva"}.
-        """
-        return justificacion.strip()
-
-def train_regression_models(data: pd.DataFrame, features: List[str], 
-                          target_variable: str = None,
-                          config: Dict = None) -> Tuple[pd.DataFrame, Dict]:
+def train_account_regression_model(account_name: str, data: pd.DataFrame, 
+                                  target_variable: str = None,
+                                  save_model: bool = True) -> Tuple[AccountRegressionModel, Dict]:
     """
-    Función principal para entrenar modelos de regresión.
+    Función principal para entrenar modelos de regresión para una cuenta.
     
     Args:
-        data (pd.DataFrame): DataFrame con datos
-        features (List[str]): Lista de features
+        account_name (str): Nombre de la cuenta
+        data (pd.DataFrame): DataFrame con datos de la cuenta
         target_variable (str): Variable objetivo
-        config (Dict): Configuración de modelos
+        save_model (bool): Si guardar el mejor modelo
         
     Returns:
-        Tuple[pd.DataFrame, Dict]: Resultados y recomendación
+        Tuple[AccountRegressionModel, Dict]: Modelo entrenado y reporte
     """
-    analyzer = RegressionAnalyzer(target_variable=target_variable, config=config)
+    print(f"\n🚀 Iniciando análisis de regresión para: {account_name}")
+    
+    # Crear modelo
+    model = AccountRegressionModel(account_name, target_variable)
     
     # Preparar datos
-    X_reg, y, y_stats = analyzer.prepare_regression_data(data, features)
+    X, y = model.prepare_data(data)
     
     # Dividir datos
-    analyzer.split_data(X_reg, y)
+    model.split_data(X, y)
     
     # Entrenar y evaluar modelos
-    resultados = analyzer.train_and_evaluate_models()
+    results_df = model.train_and_evaluate_models()
     
-    # Crear DataFrame de resultados
-    resultados_df = analyzer.create_results_dataframe(resultados)
+    # Mostrar resultados
+    model.print_results_summary()
     
-    # Imprimir resumen
-    analyzer.print_results_summary(resultados_df)
+    # Guardar mejor modelo si se solicita
+    if save_model and len(results_df) > 0:
+        try:
+            saved_path = model.save_model()
+            print(f"💾 Modelo guardado en: {saved_path}")
+        except Exception as e:
+            print(f"❌ Error guardando modelo: {e}")
     
-    # Encontrar mejores modelos
-    best_models = analyzer.find_best_models(resultados_df)
+    # Generar reporte
+    report = model.generate_report()
     
-    # Generar recomendación
-    recommendation = analyzer.generate_model_recommendation(resultados_df)
-    
-    if recommendation:
-        print(f"\n🏆 MODELO RECOMENDADO: {recommendation['modelo']}")
-        print(f"📊 Métricas del modelo recomendado:")
-        for metric, value in recommendation['metrics'].items():
-            print(f"   • {metric}: {value:.3f}")
-        print(f"   • Score Compuesto: {recommendation['score_compuesto']:.3f}")
-        
-        print(f"\n💡 JUSTIFICACIÓN:")
-        print(recommendation['justificacion'])
-    
-    return resultados_df, recommendation
+    return model, report
 
 if __name__ == "__main__":
-    # Ejemplo de uso
-    import sys
-    sys.path.append('.')
-    from data_loader import load_and_prepare_data
-    from preprocessing import preprocess_twitter_data
-    
-    # Cargar y preprocesar datos
-    data, _ = load_and_prepare_data()
-    X_scaled, data_enhanced, features, _ = preprocess_twitter_data(data)
-    
-    # Entrenar modelos de regresión
-    results_df, recommendation = train_regression_models(data_enhanced, features, target_variable='likes')
-    
-    print(f"\n✅ Ejemplo completado. Mejor modelo: {recommendation['modelo'] if recommendation else 'N/A'}")
+    print("🔧 Módulo de modelos de regresión cargado")
+    print("📋 Uso: train_account_regression_model(account_name, data)")
