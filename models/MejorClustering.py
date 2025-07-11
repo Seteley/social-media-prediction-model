@@ -726,7 +726,18 @@ class HybridClusteringAnalyzer:
         evaluation_df = pd.DataFrame(results['evaluation']).T
         evaluation_df.to_csv(output_path / f"{username}_evaluation_metrics.csv")
         
+
+        # Guardar el mejor modelo como .pkl en models/<username>/clustering.pkl
+        import pickle
+        best_model_name = self.select_best_model(results['evaluation'])
+        best_model = results['clustering'][best_model_name]['model']
+        model_dir = Path('models') / username
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = model_dir / 'clustering.pkl'
+        with open(model_path, 'wb') as f:
+            pickle.dump(best_model, f)
         print(f"💾 Resultados guardados en {output_path}")
+        print(f"💾 Mejor modelo guardado en {model_path}")
 
 # FUNCIONES DE UTILIDAD PARA COMPATIBILIDAD CON SCRIPTS EXISTENTES
 
