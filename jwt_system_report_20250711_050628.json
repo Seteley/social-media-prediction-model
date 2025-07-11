@@ -1,0 +1,32 @@
+{
+  "files": {
+    "total_files": 13,
+    "existing_files": 13,
+    "missing_files": [],
+    "completion_rate": 100.0
+  },
+  "database": {
+    "exists": false,
+    "tables": [],
+    "users": 0,
+    "empresas": 0,
+    "connections": false
+  },
+  "dependencies": {
+    "total_packages": 5,
+    "installed_packages": 5,
+    "missing_packages": []
+  },
+  "api": {
+    "running": true,
+    "auth_endpoints": true,
+    "protected_endpoints": false,
+    "login_working": false
+  },
+  "security": {
+    "secure_secret": true,
+    "secure_algorithm": true,
+    "reasonable_expiry": true,
+    "bcrypt_hashing": true
+  }
+}

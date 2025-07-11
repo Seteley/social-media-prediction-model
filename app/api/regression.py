@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import pickle
 import joblib
@@ -6,10 +6,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from typing import Dict, Any
 from app.api.schemas_regression import (
     RegressionRequest, RegressionResponse, 
     PredictionRequest, PredictionResponse
 )
+from app.auth.dependencies import auth_required, account_access_required
+from app.auth.auth_service import auth_service
 
 router = APIRouter()
 
@@ -17,14 +20,25 @@ router = APIRouter()
 MODEL_BASE_PATH = Path("models")
 
 @router.get("/predict/{username}", response_model=PredictionResponse)
-def predict_single_get(username: str, fecha: str):
+def predict_single_get(
+    username: str, 
+    fecha: str,
+    current_user: Dict[str, Any] = Depends(account_access_required)
+):
     """
     Realiza una predicción de regresión usando una fecha.
     
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    
     Parámetros:
+    - username: Nombre de la cuenta (debe pertenecer a tu empresa)
     - fecha: Fecha en formato YYYY-MM-DD (ej: 2025-07-11)
       Automáticamente extrae dia_semana, mes y asume hora=23
-      Ejemplo: /predict/Interbank?fecha=2028-07-11
+      
+    Ejemplo: /predict/Interbank?fecha=2025-07-11
+    
+    **Headers requeridos:**
+    - Authorization: Bearer {token_jwt}
     """
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
@@ -90,8 +104,21 @@ def predict_single_get(username: str, fecha: str):
         raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
 
 @router.post("/predict-batch", response_model=RegressionResponse)
-def predict_regression_batch(req: RegressionRequest):
-    """Realiza predicciones múltiples de regresión usando el modelo entrenado para un usuario."""
+def predict_regression_batch(
+    req: RegressionRequest,
+    current_user: Dict[str, Any] = Depends(auth_required)
+):
+    """
+    Realiza predicciones múltiples de regresión usando el modelo entrenado para un usuario.
+    
+    **Requiere:** Token JWT válido
+    """
+    # Verificar acceso a la cuenta
+    if not auth_service.user_has_access_to_account(current_user['empresa_id'], req.username):
+        raise HTTPException(
+            status_code=403,
+            detail=f"No tiene acceso a la cuenta @{req.username}"
+        )
     model_path = MODEL_BASE_PATH / req.username / "regresion.pkl"
     
     if not model_path.exists():
@@ -147,8 +174,15 @@ def predict_regression_batch(req: RegressionRequest):
 
 
 @router.get("/model-info/{username}")
-def get_model_info(username: str):
-    """Obtiene información del modelo de regresión guardado."""
+def get_model_info(
+    username: str,
+    current_user: Dict[str, Any] = Depends(account_access_required)
+):
+    """
+    Obtiene información del modelo de regresión guardado.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    """
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
     if not model_path.exists():
@@ -175,8 +209,15 @@ def get_model_info(username: str):
         raise HTTPException(status_code=500, detail=f"Error loading model info: {str(e)}")
 
 @router.get("/features/{username}")
-def get_required_features(username: str):
-    """Obtiene las features requeridas para hacer predicciones con el modelo."""
+def get_required_features(
+    username: str,
+    current_user: Dict[str, Any] = Depends(account_access_required)
+):
+    """
+    Obtiene las features requeridas para hacer predicciones con el modelo.
+    
+    **Requiere:** Token JWT válido y acceso a la cuenta
+    """
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
     if not model_path.exists():
