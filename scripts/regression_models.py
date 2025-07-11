@@ -337,15 +337,17 @@ class AccountRegressionModel:
     
     def save_model(self, model_id: str = None, save_path: str = None) -> str:
         """
-        Guarda el modelo entrenado.
+        Guarda el mejor modelo en la nueva estructura de directorios.
         
         Args:
             model_id (str): ID del modelo a guardar (por defecto: mejor modelo)
-            save_path (str): Ruta donde guardar (por defecto: directorio de modelos)
+            save_path (str): Ruta donde guardar (por defecto: models/username/regresion.pkl)
             
         Returns:
             str: Ruta del archivo guardado
         """
+        from .config import get_model_filepath
+        
         # Usar mejor modelo si no se especifica
         if model_id is None:
             if self.best_model is None:
@@ -355,12 +357,9 @@ class AccountRegressionModel:
         if model_id not in self.trained_models:
             raise ValueError(f"Modelo '{model_id}' no está entrenado")
         
-        # Crear directorio si no existe
+        # Usar nueva estructura de directorios
         if save_path is None:
-            save_dir = Path(OUTPUT_CONFIG['models_dir'])
-            save_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_path = save_dir / f"{self.account_name}_{model_id}_{timestamp}.pkl"
+            save_path = get_model_filepath(self.account_name)
         
         # Guardar modelo
         model_data = {

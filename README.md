@@ -127,13 +127,37 @@ python -m scripts.run_individual --account BCPComunica --verbose
 - **engagement_rate_promedio**: Tasa de engagement promedio
 - **engagement_ma7**: Promedio móvil de engagement (7 períodos)
 
-## 💾 Resultados
+## 💾 Estructura de Salida
 
-Cada análisis genera:
+Cada análisis genera archivos organizados de la siguiente manera:
 
-- **Modelo entrenado** (`.pkl`): Guardado en `results/models/`
-- **Reporte JSON**: Métricas detalladas en `results/reports/`
+### 📁 Directorios de Salida
+- **`metricas/`**: Reportes JSON con métricas detalladas
+  - `{username}.json` - Reporte completo para cada cuenta
+- **`models/`**: Modelos entrenados organizados por cuenta
+  - `{username}/regresion.pkl` - Mejor modelo para cada cuenta
+
+### 📊 Ejemplo de estructura:
+```
+metricas/
+├── BanBif.json
+├── Interbank.json
+└── BCPComunica.json
+
+models/
+├── BanBif/
+│   └── regresion.pkl
+├── Interbank/
+│   └── regresion.pkl
+└── BCPComunica/
+    └── regresion.pkl
+```
+
+### 📋 Contenido de los reportes:
 - **Comparación de modelos**: R², RMSE, MAE, CV scores
+- **Mejor modelo identificado** automáticamente
+- **Features utilizadas** y estadísticas
+- **Métricas de validación cruzada**
 
 ## 🔧 Estructura de Datos
 
@@ -183,8 +207,8 @@ python -m scripts.run_individual --list-accounts
 python -m scripts.run_individual --account BanBif
 
 # 3. Revisar resultados
-ls results/models/BanBif_*
-ls results/reports/BanBif_*
+ls models/BanBif/regresion.pkl
+cat metricas/BanBif.json
 ```
 
 ## 🧪 Testing

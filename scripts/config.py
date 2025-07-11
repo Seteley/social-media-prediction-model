@@ -127,10 +127,10 @@ FEATURE_CONFIG = {
 # =============================================================================
 
 OUTPUT_CONFIG = {
-    'models_dir': 'results/models/',
-    'reports_dir': 'results/reports/',
-    'plots_dir': 'results/plots/',
-    'file_format': 'csv'
+    'metricas_dir': 'metricas/',          # Reportes JSON van aquí directamente
+    'models_base_dir': 'models/',         # Base para carpetas por usuario  
+    'model_filename': 'regresion.pkl',    # Nombre fijo del archivo del modelo
+    'file_format': 'json'
 }
 
 # =============================================================================
@@ -245,6 +245,59 @@ def print_project_info():
     print(f"📊 Objetivo: {PROJECT_INFO['target']}")
     print(f"💾 Fuente: {PROJECT_INFO['data_source']}")
     print(f"🔍 Enfoque: {PROJECT_INFO['focus']}")
+
+# =============================================================================
+# UTILIDADES DE DIRECTORIOS Y ARCHIVOS
+# =============================================================================
+
+def get_user_model_dir(username: str) -> str:
+    """
+    Obtiene el directorio del modelo para un usuario específico.
+    
+    Args:
+        username (str): Nombre de usuario/cuenta
+        
+    Returns:
+        str: Ruta del directorio del modelo
+    """
+    import os
+    model_dir = os.path.join(OUTPUT_CONFIG['models_base_dir'], username)
+    os.makedirs(model_dir, exist_ok=True)
+    return model_dir
+
+def get_model_filepath(username: str) -> str:
+    """
+    Obtiene la ruta completa del archivo del modelo para un usuario.
+    
+    Args:
+        username (str): Nombre de usuario/cuenta
+        
+    Returns:
+        str: Ruta completa del archivo del modelo
+    """
+    import os
+    model_dir = get_user_model_dir(username)
+    return os.path.join(model_dir, OUTPUT_CONFIG['model_filename'])
+
+def get_metrics_filepath(username: str) -> str:
+    """
+    Obtiene la ruta del archivo de métricas para un usuario.
+    
+    Args:
+        username (str): Nombre de usuario/cuenta
+        
+    Returns:
+        str: Ruta del archivo de métricas JSON
+    """
+    import os
+    os.makedirs(OUTPUT_CONFIG['metricas_dir'], exist_ok=True)
+    return os.path.join(OUTPUT_CONFIG['metricas_dir'], f"{username}.json")
+
+def ensure_output_directories():
+    """Asegura que existan los directorios de salida."""
+    import os
+    os.makedirs(OUTPUT_CONFIG['metricas_dir'], exist_ok=True)
+    os.makedirs(OUTPUT_CONFIG['models_base_dir'], exist_ok=True)
 
 # Verificar base de datos al importar
 if __name__ == "__main__":

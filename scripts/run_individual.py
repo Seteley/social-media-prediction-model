@@ -21,7 +21,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 # Imports locales - usando imports relativos
 from .config import (get_available_accounts, verify_database, 
-                     print_project_info, TARGET_VARIABLE, OUTPUT_CONFIG)
+                     print_project_info, TARGET_VARIABLE, OUTPUT_CONFIG,
+                     ensure_output_directories)
 from .data_loader import AccountDataLoader
 from .preprocessing import AccountPreprocessor
 from .regression_models import train_account_regression_model
@@ -219,17 +220,14 @@ def save_results_report(account_name: str, report: Dict, output_dir: str = None)
     Returns:
         str: Ruta del archivo guardado
     """
-    # Determinar directorio de salida
+    # Determinar directorio de salida - nueva estructura
     if output_dir is None:
-        output_dir = OUTPUT_CONFIG['reports_dir']
-    
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Nombre del archivo
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{account_name}_regression_report_{timestamp}.json"
-    file_path = output_path / filename
+        from .config import get_metrics_filepath
+        file_path = get_metrics_filepath(account_name)
+    else:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        file_path = output_path / f"{account_name}.json"
     
     # Guardar reporte
     with open(file_path, 'w', encoding='utf-8') as f:

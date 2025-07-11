@@ -3,14 +3,12 @@
   "target_variable": "seguidores",
   "total_models": 8,
   "best_model": {
-    "model_id": "random_forest",
-    "model_name": "Random Forest",
-    "r2_score": 0.9308272727272576,
-    "rmse": 0.43614791069090497,
-    "mae": 0.33750000000009095,
-    "cv_r2": -0.37834388888911835,
-    "cv_std": 2.4789942169276187,
-    "composite_score": 0.7818993334760841
+    "model_id": "decision_tree",
+    "model_name": "Árbol de Decisión",
+    "r2_score": 1.0,
+    "rmse": 0.0,
+    "mae": 0.0,
+    "cv_r2": -1.2194444444444446
   },
   "all_results": [
     {
@@ -118,5 +116,5 @@
   ],
   "training_samples": 13,
   "test_samples": 4,
-  "timestamp": "2025-07-11T02:30:53.246225"
+  "timestamp": "2025-07-11T02:49:33.183817"
 }
