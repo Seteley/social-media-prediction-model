@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
-from passlib.context import CryptContext
+import bcrypt
 from pydantic import BaseModel
 
 # =============================================================================
@@ -21,9 +21,6 @@ from pydantic import BaseModel
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "tu-clave-secreta-super-segura-cambiar-en-produccion")
 JWT_ALGORITHM = "HS256"
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Token expira en 30 minutos
-
-# Contexto para hash de contraseñas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # =============================================================================
 # MODELOS PYDANTIC
@@ -55,12 +52,20 @@ class UserCreate(BaseModel):
 # =============================================================================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifica que la contraseña sea correcta"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verifica que la contraseña sea correcta usando bcrypt directamente"""
+    try:
+        password_bytes = plain_password.encode('utf-8')
+        hashed_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except Exception:
+        return False
 
 def get_password_hash(password: str) -> str:
-    """Genera hash de contraseña"""
-    return pwd_context.hash(password)
+    """Genera hash de contraseña usando bcrypt directamente"""
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Crea token JWT"""
