@@ -224,52 +224,68 @@ class AccountPreprocessor:
     
     def process_account_data(self, data: pd.DataFrame):
         """
-        Procesa los datos de una cuenta específica.
+        Procesa los datos de una cuenta específica para regresión.
         
         Args:
             data (pd.DataFrame): Datos de la cuenta
             
         Returns:
-            Tuple[pd.DataFrame, List[str]]: Datos procesados y lista de features
+            tuple: (processed_data, feature_names)
         """
-        print(f"   🔧 Procesando datos de {self.account_name or 'cuenta'}...")
+        print(f"🔧 Procesando datos para regresión de {self.account_name or 'cuenta'}")
         
-        # Verificar que tenemos la variable objetivo
-        if self.target_variable not in data.columns:
-            available_cols = [col for col in data.columns if 'seguidores' in col.lower()]
-            if available_cols:
-                self.target_variable = available_cols[0]
-                print(f"   ⚠️  Usando '{self.target_variable}' como variable objetivo")
-            else:
-                raise ValueError(f"No se encontró variable objetivo '{self.target_variable}'")
+        # Generar features temporales
+        data_enhanced = self._create_temporal_features(data.copy())
         
-        # Obtener features disponibles
-        feature_cols = []
+        # Generar features derivadas
+        data_enhanced = self._create_derived_features(data_enhanced)
+        
+        # Limpiar datos
+        data_clean = self._clean_data(data_enhanced)
+        
+        # Obtener lista de features disponibles
+        all_features = []
         for feature_group in FEATURE_CONFIG.values():
-            feature_cols.extend(feature_group)
+            all_features.extend(feature_group)
         
         # Filtrar features que existen en los datos
-        available_features = [col for col in feature_cols if col in data.columns and col != self.target_variable]
+        available_features = [col for col in all_features if col in data_clean.columns]
         
-        if not available_features:
-            raise ValueError("No se encontraron features válidas para el modelo")
+        print(f"   ✅ Features generadas: {len(available_features)}")
+        print(f"   ✅ Registros procesados: {len(data_clean)}")
         
-        # Preparar X e y
-        X = data[available_features].fillna(0)
-        y = data[self.target_variable].fillna(0)
+        return data_clean, available_features
+    
+    def _create_temporal_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Crea features temporales."""
+        if 'fecha_publicacion' in data.columns:
+            data['fecha_publicacion'] = pd.to_datetime(data['fecha_publicacion'])
+            data['dia_semana'] = data['fecha_publicacion'].dt.dayofweek
+            data['hora'] = data['fecha_publicacion'].dt.hour
+            data['mes'] = data['fecha_publicacion'].dt.month
         
-        # Aplicar preprocesamiento
-        X_processed = self.fit_transform(X, y)
+        return data
+    
+    def _create_derived_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Crea features derivadas."""
+        # Engagement rate
+        if all(col in data.columns for col in ['likes', 'retweets', 'respuestas', 'vistas']):
+            data['total_interacciones'] = data['likes'] + data['retweets'] + data['respuestas']
+            data['engagement_rate'] = data['total_interacciones'] / (data['vistas'] + 1)
+            data['ratio_likes_vistas'] = data['likes'] / (data['vistas'] + 1)
         
-        # Crear DataFrame procesado que incluye tanto features como target
-        processed_data = X_processed.copy()
-        processed_data[self.target_variable] = y.values
+        return data
+    
+    def _clean_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Limpia los datos."""
+        # Llenar valores nulos
+        numeric_cols = data.select_dtypes(include=[np.number]).columns
+        data[numeric_cols] = data[numeric_cols].fillna(0)
         
-        feature_names = X_processed.columns.tolist()
+        # Remover valores infinitos
+        data = data.replace([np.inf, -np.inf], 0)
         
-        print(f"   ✅ Preprocesamiento completado: {len(feature_names)} features")
-        
-        return processed_data, feature_names
+        return data
 
 class BatchPreprocessor:
     """

@@ -143,12 +143,13 @@ def load_account_data(account_name: str, verbose: bool = False) -> Optional[Any]
         loader = AccountDataLoader(account_name)
         
         # Cargar datos
-        data = loader.load_account_data()
+        data_dict = loader.load_account_data()
         
-        if data is None or len(data) == 0:
+        if data_dict is None or data_dict['combined'].empty:
             print(f"❌ No se encontraron datos para la cuenta: {account_name}")
             return None
-        
+            
+        data = data_dict['combined']  # Usar los datos combinados
         print(f"✅ Datos cargados: {len(data)} registros")
         
         if verbose:
@@ -181,13 +182,14 @@ def preprocess_account_data(account_name: str, data: Any, target_variable: str, 
         preprocessor = AccountPreprocessor(account_name, target_variable)
         
         # Preprocesar datos
-        processed_data = preprocessor.preprocess_account_data(data)
+        processed_data, feature_names = preprocessor.process_account_data(data)
         
         if processed_data is None or len(processed_data) == 0:
             print(f"❌ Error en preprocesamiento para: {account_name}")
             return None
         
         print(f"✅ Datos preprocesados: {len(processed_data)} registros")
+        print(f"✅ Features generadas: {len(feature_names)}")
         
         if verbose:
             print(f"📊 Features finales: {list(processed_data.columns)}")
