@@ -17,19 +17,14 @@ router = APIRouter()
 MODEL_BASE_PATH = Path("models")
 
 @router.get("/predict/{username}", response_model=PredictionResponse)
-def predict_single_get(username: str, 
-                      fecha: str = None,
-                      dia_semana: int = None,
-                      hora: int = None,
-                      mes: int = None):
+def predict_single_get(username: str, fecha: str):
     """
-    Realiza una predicción usando fecha o parámetros temporales individuales.
+    Realiza una predicción de regresión usando una fecha.
     
     Parámetros:
-    - fecha: Fecha en formato YYYY-MM-DD (ej: 2025-07-11) - Se asume hora 23:00
-    - dia_semana: Día de la semana (0=Lunes, 6=Domingo) - opcional si se proporciona fecha
-    - hora: Hora del día (0-23) - opcional si se proporciona fecha (default: 23)
-    - mes: Mes del año (1-12) - opcional si se proporciona fecha
+    - fecha: Fecha en formato YYYY-MM-DD (ej: 2025-07-11)
+      Automáticamente extrae dia_semana, mes y asume hora=23
+      Ejemplo: /predict/Interbank?fecha=2028-07-11
     """
     model_path = MODEL_BASE_PATH / username / "regresion.pkl"
     
@@ -48,56 +43,26 @@ def predict_single_get(username: str,
         feature_names = model_data['feature_names']
         target_variable = model_data['target_variable']
         
-        # Procesar fecha si se proporciona
-        if fecha:
-            from datetime import datetime
-            try:
-                fecha_obj = datetime.strptime(fecha, "%Y-%m-%d")
-                # Extraer componentes temporales
-                dia_semana_calc = fecha_obj.weekday()  # 0=Lunes, 6=Domingo
-                mes_calc = fecha_obj.month  # 1-12
-                hora_calc = 23  # Fin del día por defecto
-                
-                input_features = {
-                    'dia_semana': dia_semana_calc,
-                    'hora': hora_calc,
-                    'mes': mes_calc
-                }
-                
-                fecha_info = {
-                    'fecha_original': fecha,
-                    'dia_semana_calculado': dia_semana_calc,
-                    'mes_calculado': mes_calc,
-                    'hora_asumida': hora_calc,
-                    'dia_nombre': fecha_obj.strftime('%A'),
-                    'mes_nombre': fecha_obj.strftime('%B')
-                }
-                
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Formato de fecha inválido. Use YYYY-MM-DD (ej: 2025-07-11)"
-                )
-        else:
-            # Usar parámetros individuales
-            if dia_semana is None or mes is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Debe proporcionar 'fecha' (YYYY-MM-DD) o todos los parámetros 'dia_semana', 'mes' (y opcionalmente 'hora')"
-                )
+        # Procesar fecha
+        from datetime import datetime
+        try:
+            fecha_obj = datetime.strptime(fecha, "%Y-%m-%d")
+            # Extraer componentes temporales
+            dia_semana_calc = fecha_obj.weekday()  # 0=Lunes, 6=Domingo
+            mes_calc = fecha_obj.month  # 1-12
+            hora_calc = 23  # Fin del día por defecto
             
             input_features = {
-                'dia_semana': dia_semana,
-                'hora': hora if hora is not None else 23,  # Fin del día por defecto
-                'mes': mes
+                'dia_semana': dia_semana_calc,
+                'hora': hora_calc,
+                'mes': mes_calc
             }
             
-            fecha_info = {
-                'dia_semana': dia_semana,
-                'hora': hora if hora is not None else 23,
-                'mes': mes,
-                'metodo': 'parametros_individuales'
-            }
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Formato de fecha inválido. Use YYYY-MM-DD (ej: 2025-07-11)"
+            )
         
         # Verificar que todas las features requeridas estén disponibles
         missing_features = [f for f in feature_names if f not in input_features]

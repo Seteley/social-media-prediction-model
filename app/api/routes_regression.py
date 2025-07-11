@@ -104,11 +104,17 @@ def get_model_history(username: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading history: {str(e)}")
 
-@router.get("/train/{username}", response_model=TrainRegressionResponse)
-def train_regression_model(username: str, target_variable: str = "seguidores", test_size: float = 0.2, random_state: int = 42):
+@router.post("/train", response_model=TrainRegressionResponse)
+def train_regression_model(req: TrainRegressionRequest):
     """Entrena o reentrena el modelo de regresión para un usuario usando datos de DuckDB."""
     
     try:
+        # Extraer parámetros del request
+        username = req.username
+        target_variable = req.target_variable or "seguidores"
+        test_size = req.test_size or 0.2
+        random_state = req.random_state or 42
+        
         # Validar que la cuenta existe
         available_accounts = get_available_accounts()
         if username not in available_accounts:
