@@ -694,32 +694,62 @@ class HybridClusteringAnalyzer:
         if username not in self.results:
             print(f"❌ No hay resultados para {username}")
             return
-        
+
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
-        
+
         results = self.results[username]
-        
+
         # Guardar datos con clusters
         data_with_clusters = results['data']
         data_with_clusters.to_csv(output_path / f"{username}_clustering_results.csv", index=False)
-        
+
         # Guardar métricas de evaluación
         evaluation_df = pd.DataFrame(results['evaluation']).T
         evaluation_df.to_csv(output_path / f"{username}_evaluation_metrics.csv")
-        
 
         # Guardar el mejor modelo como .pkl en models/<username>/clustering.pkl
-        import pickle
+        import pickle, json, duckdb
         best_model_name = self.select_best_model(results['evaluation'])
         best_model = results['clustering'][best_model_name]['model']
+        best_params = results['clustering'][best_model_name]['params']
+        best_eval = results['evaluation'][best_model_name]
+        model_type = 'KMEANS' if 'kmeans' in best_model_name else 'DBSCAN'
+        # Parámetros relevantes
+        param_str = json.dumps(best_params)
+        eval_dict = {k: best_eval[k] for k in ['silhouette_score','davies_bouldin_score','calinski_harabasz_score','n_clusters'] if k in best_eval}
+        if 'n_noise' in best_eval:
+            eval_dict['n_noise'] = best_eval['n_noise']
+        eval_str = json.dumps(eval_dict)
+        # Guardar modelo pkl
         model_dir = Path('models') / username
         model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / 'clustering.pkl'
+        model_filename = 'clustering.pkl'
+        model_path = model_dir / model_filename
         with open(model_path, 'wb') as f:
             pickle.dump(best_model, f)
         print(f"💾 Resultados guardados en {output_path}")
         print(f"💾 Mejor modelo guardado en {model_path}")
+
+        # Guardar información en la base de datos DuckDB (tabla modelo, histórico)
+        db_path = 'data/base_de_datos/social_media.duckdb'
+        if Path(db_path).exists():
+            con = duckdb.connect(db_path)
+            # Obtener id_usuario
+            id_usuario = con.execute(f"SELECT id_usuario FROM usuario WHERE cuenta = ?", [username]).fetchone()
+            if id_usuario:
+                id_usuario = id_usuario[0]
+                # Insertar en modelo (histórico)
+                con.execute('''
+                    INSERT INTO modelo (id_usuario, tipo_modelo, parametros, fecha_entrenamiento, archivo_modelo, evaluacion)
+                    VALUES (?, ?, ?, CURRENT_DATE, ?, ?)
+                ''', [id_usuario, model_type, param_str, model_filename, eval_str])
+                print(f"💾 Registro de modelo guardado en DuckDB para usuario {username}")
+            else:
+                print(f"⚠️ No se encontró id_usuario para {username} en DuckDB. No se guardó registro de modelo.")
+            con.close()
+        else:
+            print(f"⚠️ No se encontró la base de datos DuckDB para guardar el modelo.")
 
 # FUNCIONES DE UTILIDAD PARA COMPATIBILIDAD CON SCRIPTS EXISTENTES
 

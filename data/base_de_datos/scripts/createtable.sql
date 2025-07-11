@@ -54,14 +54,17 @@ CREATE TABLE IF NOT EXISTS metrica (
     FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)
 );
 
--- Modelos entrenados
--- Solo se guarda el mejor modelo por usuario
+
+-- Usando SEQUENCE para id_modelo (histórico)
+CREATE SEQUENCE IF NOT EXISTS modelo_seq START 1;
 CREATE TABLE IF NOT EXISTS modelo (
-    id_usuario INTEGER PRIMARY KEY, -- Solo un modelo por usuario
+    id_modelo INTEGER DEFAULT nextval('modelo_seq') PRIMARY KEY,
+    id_usuario INTEGER NOT NULL,
     tipo_modelo TEXT,
     parametros TEXT,
     fecha_entrenamiento DATE,
     archivo_modelo TEXT,
+    evaluacion TEXT,
     FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)
 );
 
