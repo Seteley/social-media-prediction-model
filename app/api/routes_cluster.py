@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
 import json
@@ -120,5 +119,42 @@ def train_clustering_duckdb(username: str):
         metrics=metrics,
         model_path=model_path
     )
+
+# Endpoint para obtener clusters y ejemplos de contenido usando el modelo guardado
+@router.get("/clusters/{username}")
+def get_clusters_content(username: str):
+    """Devuelve los clusters y ejemplos de contenido usando el modelo pkl guardado."""
+    import pickle
+    model_path = MODEL_BASE_PATH / username / "clustering.pkl"
+    if not model_path.exists():
+        raise HTTPException(status_code=404, detail="Modelo no encontrado para el usuario.")
+    # Cargar modelo
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+    analyzer = HybridClusteringAnalyzer()
+    df = analyzer.load_account_data(username)
+    features = ["engagement_rate", "vistas"]
+    # Calcular métricas de engagement si no existen
+    if "engagement_rate" not in df.columns or "vistas" not in df.columns:
+        df = analyzer.calculate_engagement_metrics(df)
+    X = df[features].fillna(0).values
+    # Escalar los datos igual que en entrenamiento
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    # Predecir clusters
+    try:
+        labels = model.predict(X_scaled)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al predecir clusters: {str(e)}")
+    df["cluster"] = labels
+    clusters = []
+    for cluster_id in sorted(set(labels)):
+        ejemplos = df[df["cluster"] == cluster_id]["contenido"].head(3).tolist()
+        clusters.append({
+            "cluster": int(cluster_id),
+            "ejemplos_contenido": ejemplos
+        })
+    return {"clusters": clusters}
 
 # (El resto del archivo ya está correcto y limpio. No hay duplicados ni bloques mal indentados.)
