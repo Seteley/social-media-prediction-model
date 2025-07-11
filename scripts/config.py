@@ -112,13 +112,13 @@ TARGET_VARIABLE = 'seguidores'  # Variable objetivo: número de seguidores
 
 FEATURE_CONFIG = {
     'publicaciones_features': [
-        'respuestas', 'retweets', 'likes', 'guardados', 'vistas'
+        'respuestas', 'retweets', 'guardados', 'vistas', 'longitud_contenido'
     ],
     'temporal_features': [
         'dia_semana', 'hora', 'mes'
     ],
     'derived_features': [
-        'engagement_rate', 'total_interacciones', 'ratio_likes_vistas'
+        'ratio_likes_vistas', 'engagement_per_follower'
     ]
 }
 

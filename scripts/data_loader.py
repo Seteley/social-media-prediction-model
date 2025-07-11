@@ -29,34 +29,82 @@ class AccountDataLoader:
         
     def load_account_data(self):
         """
-        Carga todos los datos de la cuenta desde la base de datos.
+        Carga datos de métricas para predicción de seguidores.
         
         Returns:
-            dict: Diccionario con datos de publicaciones, métricas y combinados
+            dict: Diccionario con datos de métricas temporales
         """
-        print(f"📊 Cargando datos para la cuenta: {self.account_name}")
+        print(f"📊 Cargando datos de métricas para: {self.account_name}")
         
         try:
             self.connection = get_database_connection()
             
-            # Cargar datos de publicaciones
-            publicaciones_df = self._load_publicaciones()
-            print(f"   ✅ Publicaciones cargadas: {len(publicaciones_df)} registros")
+            # Query SQL enfocada en la tabla metrica con agregaciones de publicaciones
+            query = """
+            WITH publicaciones_stats AS (
+                SELECT 
+                    p.id_usuario,
+                    DATE(p.fecha_publicacion) as fecha,
+                    COUNT(*) as publicaciones_dia,
+                    AVG(p.likes) as avg_likes_dia,
+                    AVG(p.retweets) as avg_retweets_dia,
+                    AVG(p.respuestas) as avg_respuestas_dia,
+                    AVG(p.vistas) as avg_vistas_dia,
+                    SUM(p.likes + p.retweets + p.respuestas) as total_engagement_dia
+                FROM publicaciones p
+                JOIN usuario u ON p.id_usuario = u.id_usuario
+                WHERE u.cuenta = ?
+                GROUP BY p.id_usuario, DATE(p.fecha_publicacion)
+            )
+            SELECT 
+                m.id_metrica,
+                m.hora as timestamp_metrica,
+                m.seguidores,
+                m.tweets as total_tweets,
+                m.siguiendo,
+                u.cuenta,
+                u.nombre,
+                COALESCE(ps.publicaciones_dia, 0) as publicaciones_dia,
+                COALESCE(ps.avg_likes_dia, 0) as avg_likes_dia,
+                COALESCE(ps.avg_retweets_dia, 0) as avg_retweets_dia,
+                COALESCE(ps.avg_respuestas_dia, 0) as avg_respuestas_dia,
+                COALESCE(ps.avg_vistas_dia, 0) as avg_vistas_dia,
+                COALESCE(ps.total_engagement_dia, 0) as total_engagement_dia
+            FROM metrica m
+            JOIN usuario u ON m.id_usuario = u.id_usuario
+            LEFT JOIN publicaciones_stats ps ON m.id_usuario = ps.id_usuario 
+                AND DATE(m.hora) = ps.fecha
+            WHERE u.cuenta = ?
+            ORDER BY m.hora DESC
+            """
             
-            # Cargar datos de métricas
-            metricas_df = self._load_metricas()
-            print(f"   ✅ Métricas cargadas: {len(metricas_df)} registros")
+            # Ejecutar query con el nombre de cuenta dos veces
+            metrica_df = self.connection.execute(query, [self.account_name, self.account_name]).df()
             
-            # Combinar datos
-            combined_df = self._combine_data(publicaciones_df, metricas_df)
-            print(f"   ✅ Datos combinados: {len(combined_df)} registros")
+            if metrica_df.empty:
+                print(f"   ❌ No se encontraron datos de métricas para {self.account_name}")
+                self.connection.close()
+                return {'combined': pd.DataFrame(), 'account': self.account_name}
+            
+            # Procesar datos
+            metrica_df = self._process_metrica_data(metrica_df)
+            
+            print(f"   ✅ Datos de métricas: {len(metrica_df)} registros")
+            print(f"   ✅ Columnas disponibles: {list(metrica_df.columns)}")
+            
+            # Mostrar estadísticas de seguidores
+            if 'seguidores' in metrica_df.columns:
+                seguidores_stats = metrica_df['seguidores'].describe()
+                print(f"   📊 Estadísticas de seguidores:")
+                print(f"      - Media: {seguidores_stats['mean']:,.0f}")
+                print(f"      - Min: {seguidores_stats['min']:,.0f}")
+                print(f"      - Max: {seguidores_stats['max']:,.0f}")
+                print(f"      - Std: {seguidores_stats['std']:,.2f}")
             
             self.connection.close()
             
             return {
-                'publicaciones': publicaciones_df,
-                'metricas': metricas_df,
-                'combined': combined_df,
+                'combined': metrica_df,
                 'account': self.account_name
             }
             
@@ -64,147 +112,66 @@ class AccountDataLoader:
             if self.connection:
                 self.connection.close()
             print(f"❌ Error cargando datos para {self.account_name}: {e}")
-            return None
+            return {'combined': pd.DataFrame(), 'account': self.account_name}
     
-    def _load_publicaciones(self):
-        """Carga datos de publicaciones de la cuenta."""
-        query = """
-        SELECT 
-            p.id_publicacion,
-            p.fecha_publicacion,
-            p.contenido,
-            p.respuestas,
-            p.retweets,
-            p.likes,
-            p.guardados,
-            p.vistas
-        FROM publicaciones p
-        INNER JOIN usuario u ON p.id_usuario = u.id_usuario
-        WHERE u.cuenta = ?
-        ORDER BY p.fecha_publicacion
+    def _process_metrica_data(self, df):
         """
-        
-        df = self.connection.execute(query, [self.account_name]).fetchdf()
-        
-        # Procesar fechas
-        if not df.empty:
-            df['fecha_publicacion'] = pd.to_datetime(df['fecha_publicacion'])
-            
-            # Agregar features temporales
-            df['dia_semana'] = df['fecha_publicacion'].dt.dayofweek
-            df['hora'] = df['fecha_publicacion'].dt.hour
-            df['mes'] = df['fecha_publicacion'].dt.month
-            
-            # Rellenar valores nulos
-            numeric_cols = ['respuestas', 'retweets', 'likes', 'guardados', 'vistas']
-            for col in numeric_cols:
-                df[col] = df[col].fillna(0)
-        
-        return df
-    
-    def _load_metricas(self):
-        """Carga datos de métricas de la cuenta."""
-        query = """
-        SELECT 
-            m.id_metrica,
-            m.hora,
-            m.seguidores,
-            m.tweets,
-            m.siguiendo
-        FROM metrica m
-        INNER JOIN usuario u ON m.id_usuario = u.id_usuario
-        WHERE u.cuenta = ?
-        ORDER BY m.hora
-        """
-        
-        df = self.connection.execute(query, [self.account_name]).fetchdf()
-        
-        # Procesar fechas
-        if not df.empty:
-            df['hora'] = pd.to_datetime(df['hora'])
-            
-            # Rellenar valores nulos
-            numeric_cols = ['seguidores', 'tweets', 'siguiendo']
-            for col in numeric_cols:
-                df[col] = df[col].fillna(df[col].median())
-        
-        return df
-    
-    def _combine_data(self, publicaciones_df, metricas_df):
-        """
-        Combina datos de publicaciones y métricas.
+        Procesa los datos de métricas y agrega features derivadas para predicción de seguidores.
         
         Args:
-            publicaciones_df: DataFrame de publicaciones
-            metricas_df: DataFrame de métricas
+            df (pd.DataFrame): Datos de métricas con estadísticas de publicaciones
             
         Returns:
-            pd.DataFrame: Datos combinados
+            pd.DataFrame: Datos procesados con features adicionales
         """
-        if publicaciones_df.empty or metricas_df.empty:
-            print("⚠️  Datos insuficientes para combinar")
-            return pd.DataFrame()
+        df = df.copy()
         
-        # Usar la métrica más reciente para cada publicación
-        # (en una implementación real, podrías hacer un join temporal más sofisticado)
-        latest_metric = metricas_df.iloc[-1]  # Métrica más reciente
+        # Limpiar datos nulos usando forward fill moderno
+        df['seguidores'] = df['seguidores'].ffill().fillna(0)
+        df['total_tweets'] = df['total_tweets'].ffill().fillna(0)
+        df['siguiendo'] = df['siguiendo'].ffill().fillna(0)
         
-        # Agregar métricas a publicaciones
-        combined = publicaciones_df.copy()
-        combined['seguidores'] = latest_metric['seguidores']
-        combined['total_tweets'] = latest_metric['tweets']
-        combined['siguiendo'] = latest_metric['siguiendo']
+        # Convertir fechas
+        df['timestamp_metrica'] = pd.to_datetime(df['timestamp_metrica'])
         
-        # Calcular features derivadas
-        combined = self._calculate_derived_features(combined)
+        # Features temporales
+        df['año'] = df['timestamp_metrica'].dt.year
+        df['mes'] = df['timestamp_metrica'].dt.month
+        df['dia_semana'] = df['timestamp_metrica'].dt.dayofweek
+        df['hora'] = df['timestamp_metrica'].dt.hour
+        df['dia_año'] = df['timestamp_metrica'].dt.dayofyear
         
-        return combined
-    
-    def _calculate_derived_features(self, df):
-        """
-        Calcula features derivadas para el análisis.
+        # Ordenar por tiempo para features de tendencia
+        df = df.sort_values('timestamp_metrica')
         
-        Args:
-            df: DataFrame con datos base
-            
-        Returns:
-            pd.DataFrame: DataFrame con features adicionales
-        """
-        # Engagement rate
-        df['engagement_rate'] = 0.0
-        mask_vistas = df['vistas'] > 0
-        df.loc[mask_vistas, 'engagement_rate'] = (
-            df.loc[mask_vistas, 'respuestas'] +
-            df.loc[mask_vistas, 'retweets'] +
-            df.loc[mask_vistas, 'likes'] +
-            df.loc[mask_vistas, 'guardados']
-        ) / df.loc[mask_vistas, 'vistas']
+        # Features de crecimiento/tendencia (diferencias temporales)
+        df['seguidores_diff'] = df['seguidores'].diff().fillna(0)
+        df['tweets_diff'] = df['total_tweets'].diff().fillna(0)
+        df['siguiendo_diff'] = df['siguiendo'].diff().fillna(0)
         
-        # Total de interacciones
-        df['total_interacciones'] = (
-            df['respuestas'] + df['retweets'] + 
-            df['likes'] + df['guardados']
-        )
+        # Features de ratios
+        df['ratio_seguidores_siguiendo'] = df['seguidores'] / (df['siguiendo'] + 1)
+        df['ratio_seguidores_tweets'] = df['seguidores'] / (df['total_tweets'] + 1)
         
-        # Ratio likes/vistas
-        df['ratio_likes_vistas'] = 0.0
-        df.loc[mask_vistas, 'ratio_likes_vistas'] = (
-            df.loc[mask_vistas, 'likes'] / df.loc[mask_vistas, 'vistas']
-        )
+        # Features de engagement promedio
+        df['engagement_rate_promedio'] = df['total_engagement_dia'] / (df['publicaciones_dia'] + 1)
+        df['actividad_publicacion'] = df['publicaciones_dia']
         
-        # Longitud del contenido
-        df['longitud_contenido'] = df['contenido'].str.len().fillna(0)
+        # Features de ventana móvil (últimos 7 registros)
+        window_size = min(7, len(df))
+        if window_size > 1:
+            df['seguidores_ma7'] = df['seguidores'].rolling(window=window_size, min_periods=1).mean()
+            df['seguidores_std7'] = df['seguidores'].rolling(window=window_size, min_periods=1).std().fillna(0)
+            df['engagement_ma7'] = df['total_engagement_dia'].rolling(window=window_size, min_periods=1).mean()
+        else:
+            df['seguidores_ma7'] = df['seguidores']
+            df['seguidores_std7'] = 0
+            df['engagement_ma7'] = df['total_engagement_dia']
         
-        # Ratio de engagement por seguidor
-        df['engagement_per_follower'] = 0.0
-        mask_seguidores = df['seguidores'] > 0
-        df.loc[mask_seguidores, 'engagement_per_follower'] = (
-            df.loc[mask_seguidores, 'total_interacciones'] / 
-            df.loc[mask_seguidores, 'seguidores']
-        )
+        # Features de posición temporal (normalizado)
+        df['posicion_temporal'] = (df['timestamp_metrica'] - df['timestamp_metrica'].min()).dt.days
         
         return df
-
 class MultiAccountLoader:
     """
     Cargador para múltiples cuentas.
@@ -240,7 +207,7 @@ class MultiAccountLoader:
     
     def get_account_summary(self):
         """
-        Obtiene resumen de todas las cuentas disponibles.
+        Obtiene resumen de todas las cuentas disponibles basado en métricas.
         
         Returns:
             pd.DataFrame: DataFrame con resumen por cuenta
@@ -257,19 +224,53 @@ class MultiAccountLoader:
                     
                     summary = {
                         'cuenta': account,
-                        'total_publicaciones': len(df),
-                        'seguidores': df['seguidores'].iloc[-1] if 'seguidores' in df.columns else 0,
-                        'engagement_promedio': df['engagement_rate'].mean(),
-                        'likes_promedio': df['likes'].mean(),
-                        'vistas_promedio': df['vistas'].mean(),
-                        'fecha_primera_pub': df['fecha_publicacion'].min(),
-                        'fecha_ultima_pub': df['fecha_publicacion'].max()
+                        'total_registros_metrica': len(df),
+                        'seguidores_actual': df['seguidores'].iloc[-1] if 'seguidores' in df.columns and not df['seguidores'].empty else 0,
+                        'seguidores_promedio': df['seguidores'].mean() if 'seguidores' in df.columns else 0,
+                        'crecimiento_seguidores': df['seguidores_diff'].sum() if 'seguidores_diff' in df.columns else 0,
+                        'total_tweets': df['total_tweets'].iloc[-1] if 'total_tweets' in df.columns and not df['total_tweets'].empty else 0,
+                        'siguiendo': df['siguiendo'].iloc[-1] if 'siguiendo' in df.columns and not df['siguiendo'].empty else 0,
+                        'publicaciones_promedio_dia': df['publicaciones_dia'].mean() if 'publicaciones_dia' in df.columns else 0,
+                        'engagement_promedio_dia': df['total_engagement_dia'].mean() if 'total_engagement_dia' in df.columns else 0,
+                        'fecha_primera_metrica': df['timestamp_metrica'].min() if 'timestamp_metrica' in df.columns else None,
+                        'fecha_ultima_metrica': df['timestamp_metrica'].max() if 'timestamp_metrica' in df.columns else None
                     }
                     
+                    summary_data.append(summary)
+                else:
+                    # Agregar cuenta con datos vacíos
+                    summary = {
+                        'cuenta': account,
+                        'total_registros_metrica': 0,
+                        'seguidores_actual': 0,
+                        'seguidores_promedio': 0,
+                        'crecimiento_seguidores': 0,
+                        'total_tweets': 0,
+                        'siguiendo': 0,
+                        'publicaciones_promedio_dia': 0,
+                        'engagement_promedio_dia': 0,
+                        'fecha_primera_metrica': None,
+                        'fecha_ultima_metrica': None
+                    }
                     summary_data.append(summary)
                     
             except Exception as e:
                 print(f"⚠️  Error procesando {account}: {e}")
+                # Agregar cuenta con error
+                summary = {
+                    'cuenta': account,
+                    'total_registros_metrica': -1,  # Indicador de error
+                    'seguidores_actual': 0,
+                    'seguidores_promedio': 0,
+                    'crecimiento_seguidores': 0,
+                    'total_tweets': 0,
+                    'siguiendo': 0,
+                    'publicaciones_promedio_dia': 0,
+                    'engagement_promedio_dia': 0,
+                    'fecha_primera_metrica': None,
+                    'fecha_ultima_metrica': None
+                }
+                summary_data.append(summary)
                 continue
         
         return pd.DataFrame(summary_data)
@@ -280,7 +281,7 @@ class MultiAccountLoader:
 
 def load_account_for_regression(account_name: str):
     """
-    Carga datos de una cuenta específica listos para regresión.
+    Carga datos de una cuenta específica listos para regresión de seguidores.
     
     Args:
         account_name (str): Nombre de la cuenta
@@ -296,12 +297,16 @@ def load_account_for_regression(account_name: str):
     
     df = data['combined']
     
-    # Seleccionar features para regresión
+    # Seleccionar features para regresión de seguidores
     feature_columns = [
-        'respuestas', 'retweets', 'likes', 'guardados', 'vistas',
-        'dia_semana', 'hora', 'mes',
-        'engagement_rate', 'total_interacciones', 'ratio_likes_vistas',
-        'longitud_contenido', 'engagement_per_follower'
+        'total_tweets', 'siguiendo', 'dia_semana', 'hora', 'mes', 'dia_año',
+        'seguidores_diff', 'tweets_diff', 'siguiendo_diff',
+        'ratio_seguidores_siguiendo', 'ratio_seguidores_tweets',
+        'publicaciones_dia', 'avg_likes_dia', 'avg_retweets_dia', 
+        'avg_respuestas_dia', 'avg_vistas_dia', 'total_engagement_dia',
+        'engagement_rate_promedio', 'actividad_publicacion',
+        'seguidores_ma7', 'seguidores_std7', 'engagement_ma7',
+        'posicion_temporal'
     ]
     
     # Filtrar features que existen y tienen variación
@@ -314,6 +319,18 @@ def load_account_for_regression(account_name: str):
         print(f"❌ No hay features válidas para {account_name}")
         return None, None, None, None
     
+    # Remover outliers extremos en seguidores (opcional)
+    Q1 = df[TARGET_VARIABLE].quantile(0.25)
+    Q3 = df[TARGET_VARIABLE].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    
+    # Filtrar solo outliers extremos, mantener la mayoría de datos
+    mask = (df[TARGET_VARIABLE] >= lower_bound) & (df[TARGET_VARIABLE] <= upper_bound)
+    if mask.sum() > len(df) * 0.8:  # Si perdemos menos del 20% de datos
+        df = df[mask]
+    
     X = df[available_features].fillna(0)
     y = df[TARGET_VARIABLE].fillna(df[TARGET_VARIABLE].median())
     
@@ -322,7 +339,9 @@ def load_account_for_regression(account_name: str):
         'total_samples': len(df),
         'features_count': len(available_features),
         'target_mean': y.mean(),
-        'target_std': y.std()
+        'target_std': y.std(),
+        'target_range': y.max() - y.min(),
+        'time_span': df['timestamp_metrica'].max() - df['timestamp_metrica'].min()
     }
     
     return X, y, available_features, data_info

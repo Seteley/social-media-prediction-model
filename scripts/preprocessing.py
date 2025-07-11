@@ -258,7 +258,12 @@ class AccountPreprocessor:
     
     def _create_temporal_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Crea features temporales."""
-        if 'fecha_publicacion' in data.columns:
+        if 'timestamp_metrica' in data.columns:
+            data['timestamp_metrica'] = pd.to_datetime(data['timestamp_metrica'])
+            data['dia_semana'] = data['timestamp_metrica'].dt.dayofweek
+            data['hora'] = data['timestamp_metrica'].dt.hour
+            data['mes'] = data['timestamp_metrica'].dt.month
+        elif 'fecha_publicacion' in data.columns:
             data['fecha_publicacion'] = pd.to_datetime(data['fecha_publicacion'])
             data['dia_semana'] = data['fecha_publicacion'].dt.dayofweek
             data['hora'] = data['fecha_publicacion'].dt.hour
@@ -324,7 +329,7 @@ class BatchPreprocessor:
                 df = data['combined']
                 
                 feature_columns = [col for col in df.columns 
-                                 if col not in ['fecha_publicacion', 'contenido', TARGET_VARIABLE]]
+                                 if col not in ['fecha_publicacion', 'timestamp_metrica', 'contenido', TARGET_VARIABLE]]
                 
                 X = df[feature_columns]
                 y = df[TARGET_VARIABLE]
