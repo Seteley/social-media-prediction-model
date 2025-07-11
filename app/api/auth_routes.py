@@ -14,7 +14,14 @@ from typing import Dict, Any, List
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
-@router.post("/login", response_model=Token)
+@router.post("/login", 
+    response_model=Token,
+    responses={
+        200: {"description": "Login exitoso, token JWT generado"},
+        401: {"description": "Credenciales incorrectas o cuenta inactiva"},
+        400: {"description": "Datos de entrada inválidos"}
+    }
+)
 def login(login_data: UserLogin):
     """
     Iniciar sesión y obtener token JWT
@@ -23,12 +30,17 @@ def login(login_data: UserLogin):
     - username: Nombre de usuario
     - password: Contraseña
     
-    **Respuesta:**
+    **Respuesta exitosa (200):**
     - access_token: Token JWT para usar en endpoints protegidos
     - token_type: Tipo de token (bearer)
     - expires_in: Tiempo de expiración en segundos
     - empresa_id: ID de la empresa del usuario
     - username: Nombre de usuario
+    
+    **Códigos de respuesta:**
+    - 200: Login exitoso
+    - 401: Credenciales incorrectas o cuenta inactiva
+    - 400: Datos de entrada inválidos
     """
     token = auth_service.login(login_data)
     
@@ -36,6 +48,13 @@ def login(login_data: UserLogin):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas"
+        )
+    
+    # Verificar si es un usuario inactivo
+    if token.status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Cuenta de usuario inactiva"
         )
     
     return token

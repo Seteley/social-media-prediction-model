@@ -20,7 +20,16 @@ class ClusteringResponse(BaseModel):
     n_clusters: int
     model_type: str
 
-@router.post("/predict/{username}", response_model=ClusteringResponse)
+@router.post("/predict/{username}", 
+    response_model=ClusteringResponse,
+    responses={
+        200: {"description": "Clustering realizado exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo de clustering no encontrado"},
+        400: {"description": "Error en los datos de entrada"}
+    }
+)
 def predict_clustering(
     username: str,
     req: ClusteringRequest,
@@ -28,6 +37,13 @@ def predict_clustering(
 ):
     """
     Predicción de clustering con autenticación JWT y control de acceso por empresa
+    
+    **Códigos de respuesta:**
+    - 200: Clustering exitoso
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    - 400: Error en datos de entrada
     
     - Requiere autenticación JWT válida
     - Solo permite acceso a modelos de la misma empresa del usuario autenticado

@@ -32,6 +32,7 @@ class Token(BaseModel):
     expires_in: int
     empresa_id: int
     username: str
+    status: Optional[str] = None
 
 class TokenData(BaseModel):
     username: Optional[str] = None

@@ -32,7 +32,7 @@ class AuthService:
                    e.nombre as empresa_nombre
             FROM usuario_acceso ua
             JOIN empresa e ON ua.id_empresa = e.id_empresa
-            WHERE ua.username = ? AND ua.activo = TRUE
+            WHERE ua.username = ?
             """
             
             result = conn.execute(query, [username]).fetchone()
@@ -49,9 +49,16 @@ class AuthService:
                 'empresa_nombre': result[5]
             }
             
-            # Verificar contraseña
+            # Verificar contraseña primero
             if not verify_password(password, user_data['password_hash']):
                 return None
+            
+            # Si la contraseña es correcta, verificar si está activo
+            if not user_data['activo']:
+                # Retornar un dict especial para indicar usuario inactivo
+                return {'status': 'inactive', 'username': username}
+            
+            return user_data
             
             return user_data
     
@@ -98,7 +105,19 @@ class AuthService:
         if not user:
             return None
         
-        # Crear token JWT
+        # Verificar si es un usuario inactivo
+        if isinstance(user, dict) and user.get('status') == 'inactive':
+            # Retornar un token especial para indicar usuario inactivo
+            return Token(
+                access_token="",
+                token_type="bearer",
+                expires_in=0,
+                empresa_id=0,
+                username=user['username'],
+                status="inactive"
+            )
+        
+        # Usuario activo - crear token JWT normal
         access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user['username'], "empresa_id": user['empresa_id'], "rol": user['rol']},

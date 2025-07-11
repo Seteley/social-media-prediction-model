@@ -19,7 +19,16 @@ router = APIRouter()
 # --- Config ---
 MODEL_BASE_PATH = Path("models")
 
-@router.get("/predict/{username}", response_model=PredictionResponse)
+@router.get("/predict/{username}", 
+    response_model=PredictionResponse,
+    responses={
+        200: {"description": "Predicción exitosa"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo de regresión no encontrado"},
+        400: {"description": "Error en los parámetros o formato de fecha"}
+    }
+)
 def predict_single_get(
     username: str, 
     fecha: str,
@@ -39,6 +48,13 @@ def predict_single_get(
     
     **Headers requeridos:**
     - Authorization: Bearer {token_jwt}
+    
+    **Códigos de respuesta:**
+    - 200: Predicción exitosa
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    - 400: Error en parámetros
     """
     # Verificar acceso a la cuenta
     if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
@@ -110,7 +126,16 @@ def predict_single_get(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
 
-@router.post("/predict-batch", response_model=RegressionResponse)
+@router.post("/predict-batch", 
+    response_model=RegressionResponse,
+    responses={
+        200: {"description": "Predicciones exitosas"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo de regresión no encontrado"},
+        400: {"description": "Error en los datos de entrada"}
+    }
+)
 def predict_regression_batch(
     req: RegressionRequest,
     current_user: Dict[str, Any] = Depends(auth_required)
@@ -119,6 +144,13 @@ def predict_regression_batch(
     Realiza predicciones múltiples de regresión usando el modelo entrenado para un usuario.
     
     **Requiere:** Token JWT válido
+    
+    **Códigos de respuesta:**
+    - 200: Predicciones exitosas
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    - 400: Error en datos de entrada
     """
     # Verificar acceso a la cuenta
     if not auth_service.user_has_access_to_account(current_user['empresa_id'], req.username):
@@ -180,7 +212,15 @@ def predict_regression_batch(
 
 
 
-@router.get("/model-info/{username}")
+@router.get("/model-info/{username}",
+    responses={
+        200: {"description": "Información del modelo obtenida exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo de regresión no encontrado"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
 def get_model_info(
     username: str,
     current_user: Dict[str, Any] = Depends(auth_required)
@@ -189,6 +229,13 @@ def get_model_info(
     Obtiene información del modelo de regresión guardado.
     
     **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Información obtenida exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    - 500: Error interno
     """
     # Verificar acceso a la cuenta
     if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
@@ -222,7 +269,15 @@ def get_model_info(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading model info: {str(e)}")
 
-@router.get("/features/{username}")
+@router.get("/features/{username}",
+    responses={
+        200: {"description": "Features requeridas obtenidas exitosamente"},
+        401: {"description": "Token inválido, expirado o no proporcionado"},
+        403: {"description": "Sin acceso a la cuenta solicitada"},
+        404: {"description": "Modelo de regresión no encontrado"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
 def get_required_features(
     username: str,
     current_user: Dict[str, Any] = Depends(auth_required)
@@ -231,6 +286,13 @@ def get_required_features(
     Obtiene las features requeridas para hacer predicciones con el modelo.
     
     **Requiere:** Token JWT válido y acceso a la cuenta
+    
+    **Códigos de respuesta:**
+    - 200: Features obtenidas exitosamente
+    - 401: Sin autenticación (token faltante, inválido o expirado)
+    - 403: Sin acceso a la cuenta (empresa diferente)
+    - 404: Modelo no encontrado
+    - 500: Error interno
     """
     # Verificar acceso a la cuenta
     if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
