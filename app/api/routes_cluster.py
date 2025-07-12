@@ -326,17 +326,31 @@ def get_clusters_content(username: str, current_user: Dict[str, Any] = Depends(a
         labels = model.predict(X_scaled)
         df["cluster"] = labels
         
+        import numpy as np
         clusters = []
         for cluster_id in sorted(set(labels)):
             cluster_df = df[df["cluster"] == cluster_id]
-            # Convertir cada fila a dict (incluyendo todas las columnas)
             publicaciones = cluster_df.to_dict(orient="records")
+            # Convertir todos los valores Timestamp a string para evitar errores de serialización
+            for pub in publicaciones:
+                for k, v in pub.items():
+                    if isinstance(v, (pd.Timestamp, np.datetime64)):
+                        pub[k] = str(v)
             clusters.append({
                 "cluster": int(cluster_id),
                 "publicaciones": publicaciones
             })
-        return {"clusters": clusters}
-        
+
+        # Guardar el JSON en disco
+        output_dir = Path("models") / username
+        output_dir.mkdir(parents=True, exist_ok=True)
+        json_path = output_dir / "clusters.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump({"clusters": clusters}, f, ensure_ascii=False, indent=2)
+
+        # Devolver el archivo JSON como descarga
+        from fastapi.responses import FileResponse
+        return FileResponse(str(json_path), filename=f"{username}_clusters.json", media_type="application/json")
     except Exception as e:
         raise HTTPException(
             status_code=400, 
