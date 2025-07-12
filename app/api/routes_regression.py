@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pathlib import Path
 import json
 import duckdb
@@ -10,6 +10,7 @@ from app.api.schemas_regression import (
 )
 from app.auth.dependencies import auth_required
 from app.auth.auth_service import auth_service
+import ast
 
 # Agregar path del proyecto para imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -200,36 +201,19 @@ def get_model_history(
         200: {"description": "Modelo entrenado exitosamente"},
         401: {"description": "Token inválido, expirado o no proporcionado"},
         403: {"description": "Sin acceso a la cuenta solicitada"},
-        404: {"description": "Cuenta no encontrada o sin datos"},
-        400: {"description": "Error en el preprocesamiento de datos"},
-        500: {"description": "Error en el entrenamiento del modelo"}
+        404: {"description": "Usuario no encontrado"},
+        500: {"description": "Error interno en el entrenamiento"}
     }
 )
 def train_regression_model(
     username: str,
-    current_user: Dict[str, Any] = Depends(auth_required),
-    target_variable: str = "seguidores",
-    test_size: float = 0.2,
-    random_state: int = 42
+    target_variable: str = Query("seguidores", description="Variable objetivo"),
+    metric_weights: str = Query(None, description="Pesos para métricas en formato JSON, ej: {'R²':0.5,'RMSE':0.3,'MAE':0.2}"),
+    current_user: Dict[str, Any] = Depends(auth_required)
 ):
     """
-    Entrena o reentrena el modelo de regresión para un usuario usando datos de DuckDB.
-    
-    **Requiere:** Token JWT válido y acceso a la cuenta
-    
-    **Parámetros:**
-    - username: Nombre de la cuenta (debe pertenecer a tu empresa)
-    - target_variable: Variable objetivo (default: "seguidores")
-    - test_size: Proporción de datos para prueba (default: 0.2)
-    - random_state: Semilla aleatoria (default: 42)
-    
-    **Códigos de respuesta:**
-    - 200: Modelo entrenado exitosamente
-    - 401: Sin autenticación (token faltante, inválido o expirado)
-    - 403: Sin acceso a la cuenta (empresa diferente)
-    - 404: Cuenta no encontrada o sin datos
-    - 400: Error en el preprocesamiento
-    - 500: Error interno en el entrenamiento
+    Entrena modelos de regresión para una cuenta y selecciona el mejor modelo según score compuesto si se especifican pesos.
+    Permite personalizar la importancia de cada métrica.
     """
     # Verificar acceso a la cuenta
     if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
@@ -282,33 +266,57 @@ def train_regression_model(
             target_variable, 
             save_model=True
         )
-        
+
         if not report:
             raise HTTPException(
                 status_code=500, 
                 detail=f"Error en el entrenamiento de modelos para @{username}"
             )
-        
+
         # 4. Obtener información del mejor modelo
         best_model_info = report.get('best_model', {})
+        best_model_weighted = None
+        weights = None
+        if metric_weights:
+            try:
+                weights = ast.literal_eval(metric_weights)
+                best_model_weighted = model.get_best_model_weighted(weights)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error en los pesos de métricas: {e}")
+
         model_path = f"models/{username}/regresion.pkl"
-        
-        return TrainRegressionResponse(
-            message=f"Modelo de regresión entrenado exitosamente para @{username}",
-            best_model=best_model_info.get('model_name', 'Unknown'),
-            metrics={
-                "r2_score": best_model_info.get('r2_score', 0),
-                "rmse": best_model_info.get('rmse', 0),
-                "mae": best_model_info.get('mae', 0),
-                "cv_r2": best_model_info.get('cv_r2', 0)
-            },
-            model_path=model_path,
-            target_variable=target_variable,
-            features_used=report.get('features_used', []),
-            training_samples=report.get('training_samples', 0),
-            test_samples=report.get('test_samples', 0)
-        )
-        
+
+        # Si se usaron pesos, devolver ambos resultados
+        if best_model_weighted:
+            return TrainRegressionResponse(
+                message=f"Modelo de regresión entrenado exitosamente para @{username} (score compuesto)",
+                best_model=best_model_weighted.get('model_name', 'Unknown'),
+                metrics={
+                    "score_compuesto": best_model_weighted.get('score_compuesto', 0),
+                    **best_model_weighted.get('metricas', {})
+                },
+                model_path=model_path,
+                target_variable=target_variable,
+                features_used=report.get('features_used', []),
+                training_samples=report.get('training_samples', 0),
+                test_samples=report.get('test_samples', 0)
+            )
+        else:
+            return TrainRegressionResponse(
+                message=f"Modelo de regresión entrenado exitosamente para @{username}",
+                best_model=best_model_info.get('model_name', 'Unknown'),
+                metrics={
+                    "r2_score": best_model_info.get('r2_score', 0),
+                    "rmse": best_model_info.get('rmse', 0),
+                    "mae": best_model_info.get('mae', 0),
+                    "cv_r2": best_model_info.get('cv_r2', 0)
+                },
+                model_path=model_path,
+                target_variable=target_variable,
+                features_used=report.get('features_used', []),
+                training_samples=report.get('training_samples', 0),
+                test_samples=report.get('test_samples', 0)
+            )
     except HTTPException:
         raise
     except Exception as e:

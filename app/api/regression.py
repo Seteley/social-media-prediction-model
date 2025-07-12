@@ -260,7 +260,6 @@ def get_model_info(
             "username": model_data['account_name'],
             "target_variable": model_data['target_variable'],
             "model_type": type(model_data['model']).__name__,
-            "feature_names": model_data['feature_names'],
             "model_id": model_data.get('model_id', 'unknown'),
             "timestamp": model_data.get('timestamp', 'unknown'),
             "results_count": len(model_data.get('results', []))
@@ -268,58 +267,3 @@ def get_model_info(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading model info: {str(e)}")
-
-@router.get("/features/{username}",
-    responses={
-        200: {"description": "Features requeridas obtenidas exitosamente"},
-        401: {"description": "Token inválido, expirado o no proporcionado"},
-        403: {"description": "Sin acceso a la cuenta solicitada"},
-        404: {"description": "Modelo de regresión no encontrado"},
-        500: {"description": "Error interno del servidor"}
-    }
-)
-def get_required_features(
-    username: str,
-    current_user: Dict[str, Any] = Depends(auth_required)
-):
-    """
-    Obtiene las features requeridas para hacer predicciones con el modelo.
-    
-    **Requiere:** Token JWT válido y acceso a la cuenta
-    
-    **Códigos de respuesta:**
-    - 200: Features obtenidas exitosamente
-    - 401: Sin autenticación (token faltante, inválido o expirado)
-    - 403: Sin acceso a la cuenta (empresa diferente)
-    - 404: Modelo no encontrado
-    - 500: Error interno
-    """
-    # Verificar acceso a la cuenta
-    if not auth_service.user_has_access_to_account(current_user['empresa_id'], username):
-        raise HTTPException(
-            status_code=403,
-            detail=f"No tiene acceso a la cuenta @{username}"
-        )
-    
-    model_path = MODEL_BASE_PATH / username / "regresion.pkl"
-    
-    if not model_path.exists():
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Regression model for user {username} not found."
-        )
-    
-    try:
-        with open(model_path, "rb") as f:
-            model_data = joblib.load(f)
-        
-        return {
-            "username": username,
-            "required_features": model_data['feature_names'],
-            "target_variable": model_data['target_variable'],
-            "model_type": type(model_data['model']).__name__,
-            "example_url": f"/regression/predict/{username}?" + "&".join([f"{f}=0.0" for f in model_data['feature_names'][:3]]) + "..."
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading model features: {str(e)}")

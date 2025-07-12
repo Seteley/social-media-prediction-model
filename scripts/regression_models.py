@@ -38,73 +38,6 @@ class AccountRegressionModel:
         self.models = {}
         self.results = {}
         self.best_model = None
-        self.X_train = None
-        self.X_test = None
-        self.y_train = None
-        self.y_test = None
-        self.feature_names = None
-        self.scaler = None
-        
-    def setup_models(self) -> Dict:
-        """
-        Configura los modelos de regresión basados en la configuración.
-        
-        Returns:
-            Dict: Diccionario con modelos configurados
-        """
-        print(f"🤖 Configurando modelos para cuenta: {self.account_name}")
-        
-        self.models = {}
-        for name, config in REGRESSION_MODELS.items():
-            model_class = config['model']
-            params = config['params']
-            self.models[name] = model_class(**params)
-        
-        print(f"   • Modelos configurados: {len(self.models)}")
-        for name, config in REGRESSION_MODELS.items():
-            print(f"     - {config['description']}")
-        
-        return self.models
-# =============================================================================
-# MODELOS DE REGRESIÓN PARA PREDICCIÓN DE SEGUIDORES
-# =============================================================================
-
-"""
-Módulo para implementación y evaluación de modelos de regresión por cuenta individual.
-Enfoque: Predicción del número de seguidores usando métricas de engagement.
-"""
-
-import numpy as np
-import pandas as pd
-import joblib
-from datetime import datetime
-from pathlib import Path
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import (mean_squared_error, r2_score, mean_absolute_error, 
-                           median_absolute_error, explained_variance_score)
-from typing import Tuple, Dict, List, Optional, Any
-from .config import (REGRESSION_MODELS, TARGET_VARIABLE, FEATURE_CONFIG, 
-                    EVALUATION_METRICS, OUTPUT_CONFIG)
-
-class AccountRegressionModel:
-    """
-    Clase para crear modelos de regresión específicos por cuenta de Twitter/X.
-    Enfoque: Predicción del número de seguidores basado en métricas de engagement.
-    """
-    
-    def __init__(self, account_name: str, target_variable: str = None):
-        """
-        Inicializa el modelo de regresión para una cuenta específica.
-        
-        Args:
-            account_name (str): Nombre de la cuenta
-            target_variable (str): Variable objetivo (por defecto: seguidores)
-        """
-        self.account_name = account_name
-        self.target_variable = target_variable or TARGET_VARIABLE
-        self.models = {}
-        self.results = {}
-        self.best_model = None
         self.trained_models = {}
         self.X_train = None
         self.X_test = None
@@ -313,26 +246,60 @@ class AccountRegressionModel:
             'MAPE': mape
         }
     
-    def get_best_model(self) -> Dict:
+    def get_best_model(self, weights: Dict[str, float] = None, maximize: List[str] = None) -> Dict:
         """
-        Identifica el mejor modelo basado en R².
+        Identifica el mejor modelo usando un score compuesto con todas las métricas disponibles.
+        Las métricas se normalizan (min-max) para ser comparables.
+        
+        Args:
+            weights (Dict[str, float]): Pesos para cada métrica (por defecto: igual para todas)
+            maximize (List[str]): Lista de métricas a maximizar (por defecto: ['R²', 'EVS', 'CV_R²_mean'])
         
         Returns:
-            Dict: Información del mejor modelo
+            Dict: Información del mejor modelo según el score compuesto
         """
         if len(self.results) == 0:
             return {}
-        
-        best_row = self.results.loc[self.results['R²'].idxmax()]
+
+        df = self.results.copy()
+        metric_names = ['RMSE', 'MAE', 'MedAE', 'R²', 'EVS', 'CV_R²_mean', 'CV_R²_std', 'MAPE']
+        # Usar solo métricas presentes
+        used_metrics = [m for m in metric_names if m in df.columns]
+        if not used_metrics:
+            raise ValueError("No hay métricas válidas para calcular el score compuesto.")
+
+        # Pesos por defecto: igual para todas
+        if weights is None:
+            weights = {m: 1/len(used_metrics) for m in used_metrics}
+        # Métricas a maximizar
+        if maximize is None:
+            maximize = ['R²', 'EVS', 'CV_R²_mean']
+
+        # Normalización min-max por métrica
+        norm_df = pd.DataFrame()
+        for m in used_metrics:
+            vals = df[m].values.astype(float)
+            if m in maximize:
+                minv, maxv = np.min(vals), np.max(vals)
+                norm = (vals - minv) / (maxv - minv) if maxv > minv else np.zeros_like(vals)
+            else:
+                minv, maxv = np.min(vals), np.max(vals)
+                norm = (maxv - vals) / (maxv - minv) if maxv > minv else np.zeros_like(vals)
+            norm_df[m] = norm
+
+        # Calcular score compuesto
+        df['ScoreCompuesto'] = sum(norm_df[m] * weights[m] for m in used_metrics)
+
+        # Seleccionar el mejor modelo
+        best_row = df.loc[df['ScoreCompuesto'].idxmax()]
         self.best_model = best_row['Modelo_ID']
-        
+
         return {
             'model_id': best_row['Modelo_ID'],
             'model_name': best_row['Modelo'],
-            'r2_score': best_row['R²'],
-            'rmse': best_row['RMSE'],
-            'mae': best_row['MAE'],
-            'cv_r2': best_row['CV_R²_mean']
+            'score_compuesto': best_row['ScoreCompuesto'],
+            'metricas': {m: best_row[m] for m in used_metrics},
+            'pesos': weights
         }
     
     def save_model(self, model_id: str = None, save_path: str = None) -> str:
@@ -404,33 +371,33 @@ class AccountRegressionModel:
         
         return report
     
-    def print_results_summary(self) -> None:
+    def print_results_summary(self, weights: Dict[str, float] = None) -> None:
         """
-        Imprime resumen de resultados.
+        Imprime resumen de resultados y muestra el mejor modelo según score compuesto.
         """
         if len(self.results) == 0:
             print(f"\n❌ No se pudieron entrenar modelos para {self.account_name}")
             return
-        
+
         print(f"\n" + "="*100)
         print(f"📊 RESULTADOS DE REGRESIÓN - {self.account_name.upper()}")
         print(f"🎯 Variable objetivo: {self.target_variable}")
         print("="*100)
-        
+
         # Mostrar resultados principales
         display_cols = ['Modelo', 'R²', 'RMSE', 'MAE', 'CV_R²_mean']
         available_cols = [col for col in display_cols if col in self.results.columns]
         print(self.results[available_cols].round(3).to_string(index=False))
-        
-        # Mejor modelo
-        best_model_info = self.get_best_model()
-        if best_model_info:
-            print(f"\n🏆 MEJOR MODELO: {best_model_info['model_name']}")
-            print(f"   • R²: {best_model_info['r2_score']:.3f}")
-            print(f"   • RMSE: {best_model_info['rmse']:.2f}")
-            print(f"   • MAE: {best_model_info['mae']:.2f}")
-            print(f"   • CV R²: {best_model_info['cv_r2']:.3f}")
-        
+
+        # Mejor modelo por score compuesto
+        best_weighted = self.get_best_model(weights)
+        if best_weighted:
+            print(f"\n⭐ MEJOR MODELO (Score Compuesto): {best_weighted['model_name']}")
+            print(f"   • Score: {best_weighted['score_compuesto']:.3f}")
+            for m, v in best_weighted['metricas'].items():
+                print(f"   • {m}: {v:.3f}")
+            print(f"   • Pesos usados: {best_weighted['pesos']}")
+
         print(f"\n✅ Análisis completado para {self.account_name}")
 
 def train_account_regression_model(account_name: str, data: pd.DataFrame, 
